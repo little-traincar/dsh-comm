@@ -1,0 +1,1020 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DSH 通信调试台</title>
+<style>
+  :root{
+    --bg:#0B0E14; --panel:#121722; --card:#171D2A; --line:#232B3B; --line-soft:#1B2231;
+    --text:#E6EAF2; --muted:#8B94A7; --dim:#5C6678;
+    --blue:#4D6BFE; --cyan:#38BDF8;
+    --green:#22C55E; --yellow:#F59E0B; --red:#EF4444;
+    --mono:"Cascadia Code","JetBrains Mono",Consolas,"Courier New",monospace;
+    --sans:ui-sans-serif,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--text);font:12.5px/1.5 var(--sans);overflow:hidden}
+  button,input,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  .app{height:100%;display:flex;flex-direction:column;min-height:0;background:var(--panel)}
+  .head{flex:none;height:42px;display:flex;align-items:center;gap:9px;padding:0 12px;border-bottom:1px solid var(--line-soft)}
+  .head .plug{width:24px;height:24px;border-radius:7px;background:#182338;display:grid;place-items:center;color:var(--cyan)}
+  .head .plug svg{width:13px;height:13px}
+  .head .title{font-weight:600;font-size:13px}
+  .head .state{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+  .led{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+  .led.on{background:var(--green);box-shadow:0 0 8px #22c55e88;animation:pulse 1.8s ease-in-out infinite}
+  .led.err{background:var(--red)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .icon-btn{width:26px;height:26px;border:0;background:transparent;color:var(--muted);border-radius:6px;display:grid;place-items:center}
+  .icon-btn:hover{background:#1C2433;color:var(--text)}
+  .icon-btn svg{width:14px;height:14px}
+  .tabs{flex:none;display:flex;gap:2px;padding:0 8px;border-bottom:1px solid var(--line-soft)}
+  .tabs button{flex:1;height:33px;border:0;background:transparent;color:var(--muted);font-size:11.5px;border-bottom:2px solid transparent;white-space:nowrap}
+  .tabs button.active{color:#C9D6FF;border-bottom-color:var(--blue)}
+  .cfg{display:none;flex:none;flex-wrap:wrap;gap:7px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line-soft)}
+  .cfg.active{display:flex}
+  .cfg .hint{color:var(--dim);font-size:10.5px;width:100%;margin-top:-2px}
+  .select{position:relative;display:flex;align-items:center;height:28px;background:#0F1420;border:1px solid var(--line);border-radius:7px;padding:0 24px 0 8px;color:#CBD5E6;font-size:11.5px;white-space:nowrap}
+  .select::after{content:"▾";position:absolute;right:8px;top:50%;transform:translateY(-50%);color:var(--dim);font-size:10px;pointer-events:none}
+  .select select{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .select.port{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .select.baud{width:82px}
+  .select.ip{width:96px}
+  .select.enc{width:112px}
+  .select.eol{height:28px;font-size:11px}
+  .select:focus-within{border-color:#3A4A6B}
+  .frame{color:var(--dim);font-family:var(--mono);font-size:11px}
+  .mini-input{height:28px;background:#0F1420;border:1px solid var(--line);border-radius:7px;padding:0 8px;color:#CBD5E6;font-size:11.5px;font-family:var(--mono);outline:none;min-width:0}
+  .mini-input:focus{border-color:#3A4A6B}
+  .mini-input.port{width:62px}
+  .mini-input.host{width:126px}
+  .mini-input.interval{width:56px}
+  .colon{color:var(--dim);font-family:var(--mono);font-size:11px}
+  .connect-btn{margin-left:auto;height:28px;padding:0 10px;border-radius:7px;border:1px solid #35508F;background:#16203A;color:#9FB4FF;font-size:11.5px}
+  .connect-btn:hover{background:#1B2848}
+  .connect-btn.close{border-color:#5A3036;background:#251318;color:#FFB4B4}
+  .tools{flex:none;display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+  .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;height:26px}
+  .seg button{border:0;background:#0F1420;color:var(--muted);padding:0 9px;font-size:11.5px}
+  .seg button.active{background:#1E2B4D;color:#C9D6FF}
+  .toggle{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:11px;cursor:pointer;user-select:none;white-space:nowrap}
+  .toggle input{display:none}
+  .toggle i{width:24px;height:14px;border-radius:8px;background:#2A3242;position:relative;transition:.15s}
+  .toggle i::after{content:"";position:absolute;width:10px;height:10px;border-radius:50%;background:#8B94A7;top:2px;left:2px;transition:.15s}
+  .toggle input:checked+i{background:#2B3C75}
+  .toggle input:checked+i::after{left:12px;background:#8FA6FF}
+  .filter{flex:1;min-width:80px;height:26px;background:#0F1420;border:1px solid var(--line);border-radius:7px;padding:0 8px;font-size:11.5px;color:#CBD5E6;outline:none}
+  .filter::placeholder{color:var(--dim)}
+  .filter:focus{border-color:#3A4A6B}
+  .ghost-btn{border:1px solid var(--line);background:#151B27;color:var(--muted);border-radius:7px;height:26px;padding:0 9px;font-size:11.5px}
+  .ghost-btn:hover{background:#1C2433;color:var(--text)}
+  .log-wrap{flex:1 1 0;min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:#0C111A;border-bottom:1px solid var(--line-soft)}
+  .log{flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:8px 0 10px;font-family:var(--mono);font-size:11.5px;line-height:1.8}
+  .log::-webkit-scrollbar{width:8px}
+  .log::-webkit-scrollbar-thumb{background:#222b3c;border-radius:8px}
+  .line{display:flex;gap:7px;padding:0 12px;white-space:pre-wrap;word-break:break-all}
+  .line:hover{background:#111827}
+  .ts{color:#55617A;flex:none;font-size:10.5px;padding-top:1px}
+  .tag{flex:none;width:26px;text-align:center;font-size:10px;font-weight:700;border-radius:3px;height:14px;line-height:14px;margin-top:3px}
+  .tag.rx{color:#93A6C8;background:#1A2232}
+  .tag.tx{color:#8FB4FF;background:#17233F}
+  .tag.sys{color:#7EE2A8;background:#13261B}
+  .rawbadge{flex:none;font-size:9px;font-weight:700;color:#9FB4FF;background:#1B2440;border:1px solid #2A3560;border-radius:3px;padding:0 4px;height:14px;line-height:13px;margin-top:3px}
+  .src,.dst{flex:none;font-size:10px;border-radius:3px;padding:0 4px;height:14px;line-height:14px;margin-top:3px;max-width:118px;overflow:hidden;text-overflow:ellipsis}
+  .src{color:#6E8AB8;background:#121B2B}
+  .dst{color:#8FA6FF;background:#18203B}
+  .line .msg{flex:1;min-width:0;color:#C9D2E3}
+  .line.info .msg{color:#BFC9DB}
+  .line.warn .msg{color:#F2C66D}
+  .line.error .msg{color:#FF9B9B}
+  .line.ok .msg{color:#7EE2A8;font-weight:600}
+  .line.dim .msg{color:#7C879B}
+  .line.bad .msg{text-decoration:underline dotted #F59E0B}
+  .hexmode .line .msg{color:#8FA1BF;letter-spacing:.3px}
+  .jump-bottom{position:absolute;right:16px;bottom:12px;height:24px;padding:0 9px;border-radius:12px;border:1px solid #2F3E63;background:#1A2440;color:#B9C8FF;font-size:10.5px;display:none;box-shadow:0 4px 12px #00000055}
+  .jump-bottom.show{display:block}
+  .send{flex:none;padding:9px 12px;display:flex;flex-direction:column;gap:7px;border-bottom:1px solid var(--line-soft)}
+  .quick{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:22px}
+  .quick-label{color:var(--dim);font-size:10.5px}
+  .chip{border:1px solid var(--line);background:#101725;color:#9FB0CE;border-radius:5px;padding:0 7px;font-size:10.5px;height:22px;line-height:20px;white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+  .chip:hover{background:#18243A;color:#CFE0FF}
+  .chip.edit{color:#8FA6FF;border-color:#2F3E63;background:#141D33}
+  .quick-empty{color:var(--dim);font-size:10.5px}
+  .send-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .send-hint{flex:1;min-width:90px;color:var(--dim);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .send-row{display:flex;gap:7px;align-items:center}
+  .send-row .input{flex:1;min-width:0;height:30px;background:#0F1420;border:1px solid var(--line);border-radius:7px;padding:0 9px;color:#CBD5E6;font-family:var(--mono);font-size:11.5px;outline:none}
+  .send-row .input::placeholder{color:var(--dim);font-family:var(--sans)}
+  .send-row .input:focus{border-color:#3A4A6B}
+  .send-row .input.invalid{border-color:#7F3A3A;box-shadow:0 0 0 2px #ef444422}
+  .send-primary{height:30px;padding:0 12px;border:0;border-radius:7px;background:var(--blue);color:#fff;font-size:12px;font-weight:600}
+  .send-primary:hover{background:#5C78FF}
+  .send-primary:disabled{opacity:.45;cursor:not-allowed}
+  .ms-label{color:var(--dim);font-size:10px}
+  .status{flex:none;height:28px;display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--dim);font-size:10.5px;font-family:var(--mono);white-space:nowrap;overflow-x:auto}
+  .status b{color:#AEB9CC;font-weight:500}
+  .status .sep{color:#2A3346}
+  .status .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .rec{color:var(--yellow);display:none}
+  .rec.show{display:inline}
+  .link-btn{border:0;background:transparent;color:#6E7C96;font-size:10.5px;padding:0}
+  .link-btn:hover{color:#AEBDFF}
+  .log-menu{position:absolute;top:38px;right:46px;z-index:60;display:none;flex-direction:column;min-width:214px;background:#141A26;border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 28px #00000077;padding:4px}
+  .log-menu.show{display:flex}
+  .log-menu button{border:0;background:transparent;color:#C6D0E2;text-align:left;font-size:11.5px;padding:7px 9px;border-radius:6px;white-space:nowrap}
+  .log-menu button:hover{background:#1E2A44;color:#fff}
+  .log-menu .sep{height:1px;background:var(--line-soft);margin:3px 4px}
+  .modal-backdrop{position:absolute;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:12px;background:#00000088;backdrop-filter:blur(2px)}
+  .modal-backdrop.show{display:flex}
+  .modal{width:100%;max-width:430px;max-height:calc(100% - 20px);display:flex;flex-direction:column;overflow:hidden;background:#141A26;border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 50px #000000aa}
+  .modal-head{flex:none;display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-bottom:1px solid var(--line-soft);font-weight:600;font-size:12.5px}
+  .modal-head span{color:var(--dim);font-weight:400;font-size:10.5px}
+  .modal-body{min-height:0;overflow:auto;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+  .modal-actions{flex:none;display:flex;align-items:center;gap:8px;padding:10px 12px;border-top:1px solid var(--line-soft)}
+  .modal-actions .grow{flex:1}
+  .qrow{display:grid;grid-template-columns:62px minmax(0,1fr) 54px 22px;gap:6px;align-items:center}
+  .qrow .mini-input{height:28px}
+  .qrow .qmode{height:28px;background:#0F1420;border:1px solid var(--line);border-radius:7px;color:#CBD5E6;font-size:11px;padding:0 3px;outline:none}
+  .qrow .qdel{border:0;background:transparent;color:#7A869C;font-size:15px;height:28px;border-radius:6px;padding:0}
+  .qrow .qdel:hover{background:#3A1F26;color:#FF9B9B}
+  .toast{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);background:#1B2440;border:1px solid #2F3E63;color:#C9D6FF;font-size:11px;padding:6px 10px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:70;white-space:nowrap}
+  .toast.show{opacity:1}
+  .boot-error{position:absolute;inset:0;z-index:90;display:none;align-items:center;justify-content:center;padding:20px;background:var(--bg);color:var(--muted);font-size:12px;text-align:center;line-height:1.8}
+  .boot-error.show{display:flex}
+  html[data-theme="light"]{
+    --bg:#F7F8FA; --panel:#FFFFFF; --card:#F2F4F8; --line:#E1E5ED; --line-soft:#ECEFF4;
+    --text:#1B2333; --muted:#667085; --dim:#98A2B3;
+  }
+  html[data-theme="light"] .log-wrap{background:#FAFBFD}
+  html[data-theme="light"] .line:hover{background:#F1F4F9}
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#F7F8FA; --panel:#FFFFFF; --card:#F2F4F8; --line:#E1E5ED; --line-soft:#ECEFF4;
+      --text:#1B2333; --muted:#667085; --dim:#98A2B3;
+    }
+    .log-wrap{background:#FAFBFD}
+    .line:hover{background:#F1F4F9}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="head">
+    <span class="plug"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v3a6 6 0 0 1-12 0V8z"/><path d="M12 17v5"/></svg></span>
+    <span class="title">通信调试台</span>
+    <span class="state" id="headState"><span class="led" id="headLed"></span><span id="headText">未连接</span></span>
+    <button class="icon-btn" id="logBtn" title="日志：录制 / 导出">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="M7 9l5 5 5-5"/><path d="M5 21h14"/></svg>
+    </button>
+  </header>
+
+  <div class="tabs" id="modeTabs">
+    <button class="active" data-mode="serial">串口</button>
+    <button data-mode="tcpServer">TCP 服务</button>
+    <button data-mode="tcpClient">TCP 客户端</button>
+    <button data-mode="udp">UDP</button>
+  </div>
+
+  <div class="cfg active" id="cfgSerial">
+    <label class="select port" title="串口">
+      <span id="serialLabel">选择串口…</span>
+      <select id="serialPort"></select>
+    </label>
+    <label class="select baud" title="波特率">
+      <span id="baudLabel">115200</span>
+      <select id="serialBaud">
+        <option>9600</option><option>57600</option><option>115200</option><option>460800</option><option>921600</option><option>2000000</option>
+      </select>
+    </label>
+    <span class="frame">8N1</span>
+    <button class="connect-btn" id="serialBtn">打开</button>
+    <div class="hint" id="serialHint"></div>
+  </div>
+
+  <div class="cfg" id="cfgTcpServer">
+    <label class="select ip" title="监听地址（0.0.0.0 = 允许局域网访问）">
+      <span id="tsHostLabel">127.0.0.1</span>
+      <select id="tsHost"><option>127.0.0.1</option><option>0.0.0.0</option></select>
+    </label>
+    <span class="colon">:</span>
+    <input class="mini-input port" id="tsPort" value="8080">
+    <button class="connect-btn" id="tsBtn">监听</button>
+  </div>
+
+  <div class="cfg" id="cfgTcpClient">
+    <input class="mini-input host" id="tcHost" value="192.168.1.20">
+    <span class="colon">:</span>
+    <input class="mini-input port" id="tcPort" value="9000">
+    <button class="connect-btn" id="tcBtn">连接</button>
+  </div>
+
+  <div class="cfg" id="cfgUdp">
+    <span class="colon">本地</span>
+    <input class="mini-input port" id="udpLocal" value="8081">
+    <span class="colon">→</span>
+    <input class="mini-input host" id="udpHost" value="192.168.1.20">
+    <span class="colon">:</span>
+    <input class="mini-input port" id="udpPort" value="9000">
+    <button class="connect-btn" id="udpBtn">打开</button>
+  </div>
+
+  <div class="tools">
+    <div class="seg" id="modeSeg">
+      <button class="active" data-mode="text">文本</button>
+      <button data-mode="hex">HEX</button>
+    </div>
+    <label class="select enc" title="显示与文本发送编码">
+      <span id="encLabel">GBK</span>
+      <select id="encSel"></select>
+    </label>
+    <label class="toggle"><input type="checkbox" id="tTs" checked><i></i>时间戳</label>
+    <label class="toggle"><input type="checkbox" id="tAuto" checked><i></i>自动滚动</label>
+    <label class="toggle"><input type="checkbox" id="tPause"><i></i>暂停</label>
+    <button class="ghost-btn" id="clearBtn">清屏</button>
+    <input class="filter" id="filterInput" placeholder="过滤…">
+  </div>
+
+  <div class="log-wrap">
+    <div class="log" id="log"></div>
+    <button class="jump-bottom" id="jumpBottom">↓ 最新</button>
+  </div>
+
+  <div class="send">
+    <div class="quick" id="quickRow"><span class="quick-label">快捷</span></div>
+    <div class="send-top">
+      <div class="seg" id="sendSeg">
+        <button class="active" data-mode="text">文本</button>
+        <button data-mode="hex">HEX</button>
+      </div>
+      <span class="send-hint" id="sendHint">文本按所选编码发送；HEX 按字节解析</span>
+      <label class="select eol" title="行尾（仅文本发送追加）">
+        <span id="eolLabel">CR+LF</span>
+        <select id="eolSel"><option>CR+LF</option><option>LF</option><option>CR</option><option>无</option></select>
+      </label>
+      <label class="toggle"><input type="checkbox" id="periodic"><i></i>定时</label>
+      <input class="mini-input interval" id="periodMs" value="1000">
+      <span class="ms-label">ms</span>
+    </div>
+    <div class="send-row">
+      <input class="input" id="sendInput" placeholder="输入要发送的数据…（回车发送）">
+      <button class="send-primary" id="sendBtn">发送</button>
+    </div>
+  </div>
+
+  <div class="status">
+    <span>RX <b id="rxBytes">0 B</b></span>
+    <span class="sep">·</span>
+    <span>TX <b id="txBytes">0 B</b></span>
+    <span class="sep">·</span>
+    <span id="statCfg">—</span>
+    <span class="sep">·</span>
+    <span>编码 <b id="encStat">GBK</b></span>
+    <span class="sep">·</span>
+    <span id="peerStat">对端 0</span>
+    <span class="sep">·</span>
+    <span>缓冲 <b id="bufPct">0%</b></span>
+    <span class="rec" id="recStat">● 录制中</span>
+    <span class="right">
+      <button class="link-btn" id="saveBtn">导出日志</button>
+    </span>
+  </div>
+
+  <div class="log-menu" id="logMenu">
+    <button data-act="record" id="recordItem">● 开始录制</button>
+    <div class="sep"></div>
+    <button data-act="txt">导出文本日志 (.log)</button>
+    <button data-act="csv">导出 CSV (.csv)</button>
+    <button data-act="bin">导出接收原始字节 (.bin)</button>
+    <div class="sep"></div>
+    <button data-act="clearRecord">清空录制缓冲</button>
+  </div>
+
+  <div class="modal-backdrop" id="quickBackdrop">
+    <div class="modal">
+      <div class="modal-head">
+        <div>快捷输入设置 <span id="quickModeName"></span></div>
+        <button class="icon-btn" id="quickClose" title="关闭">✕</button>
+      </div>
+      <div class="modal-body" id="quickRows"></div>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="quickAdd">＋ 添加</button>
+        <button class="ghost-btn" id="quickReset">恢复默认</button>
+        <span class="grow"></span>
+        <button class="ghost-btn" id="quickCancel">取消</button>
+        <button class="send-primary" id="quickSave" style="height:26px;font-size:11px">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <div class="boot-error" id="bootError"></div>
+</div>
+
+<script>
+(function () {
+  'use strict'
+
+  const params = new URLSearchParams(location.search)
+  const TOKEN = params.get('token') || ''
+  const ENCODINGS = [
+    ['utf-8', 'UTF-8'], ['gbk', 'GBK'], ['gb18030', 'GB18030'], ['big5', 'Big5'],
+    ['shift_jis', 'Shift-JIS'], ['euc-kr', 'EUC-KR'], ['windows-1252', 'Windows-1252'],
+  ]
+  const MODE_LABEL = { serial: '串口', tcpServer: 'TCP 服务端', tcpClient: 'TCP 客户端', udp: 'UDP' }
+  const state = {
+    mode: 'serial', hex: false, sendHex: false, enc: 'gbk',
+    ts: true, auto: true, paused: true, filter: '',
+  }
+  const links = {}
+  const linkByMode = { serial: null, tcpServer: null, tcpClient: null, udp: null }
+  const logs = new Map()
+  let cursor = 0
+  let polling = false
+  let followTail = true
+  let recording = false
+  let recorded = []
+  let toastTimer = null
+  let periodicTimer = null
+  let quickDraft = []
+  let serialPorts = []
+
+  const $ = (id) => document.getElementById(id)
+  const logEl = $('log')
+
+  if (!TOKEN) {
+    const boot = $('bootError')
+    boot.classList.add('show')
+    boot.textContent = '缺少访问 token：请从 DSH 右栏的「通信」tab 打开本页面。'
+    return
+  }
+
+  // Client 半边每秒 postMessage 一次当前主题；iframe 跟随 DSH 深/浅色
+  window.addEventListener('message', (event) => {
+    const data = event.data
+    if (!data || data.type !== 'dsh-comm:theme') return
+    document.documentElement.dataset.theme = data.dark ? 'dark' : 'light'
+  })
+
+  /* ── API ── */
+  async function api(path, method = 'GET', body) {
+    const url = path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN)
+    const res = await fetch(url, {
+      method,
+      headers: body ? { 'content-type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    const data = await res.json().catch(() => null)
+    if (!res.ok) throw new Error((data && data.error) || ('HTTP ' + res.status))
+    return data
+  }
+
+  function toast(message) {
+    const el = $('toast')
+    el.textContent = message
+    el.classList.add('show')
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => el.classList.remove('show'), 1600)
+  }
+
+  /* ── 编码 / HEX ── */
+  function decodeBytes(bytes, encoding) {
+    try {
+      const text = new TextDecoder(encoding, { fatal: false }).decode(bytes)
+      return { text, bad: text.indexOf('\uFFFD') !== -1 }
+    } catch {
+      return { text: '[不支持的编码：' + encoding + ']', bad: true }
+    }
+  }
+  function hexOf(bytes) {
+    const out = []
+    for (let i = 0; i < bytes.length; i += 1) out.push(bytes[i].toString(16).padStart(2, '0').toUpperCase())
+    return out.join(' ')
+  }
+  function b64ToBytes(b64) {
+    const bin = atob(b64)
+    const out = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i += 1) out[i] = bin.charCodeAt(i)
+    return out
+  }
+  function fmtBytes(n) {
+    if (n < 1024) return n + ' B'
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB'
+    return (n / 1048576).toFixed(1) + ' MB'
+  }
+  function fmtTime(ms) {
+    const d = new Date(ms)
+    const p = (n, w) => String(n).padStart(w, '0')
+    return p(d.getHours(), 2) + ':' + p(d.getMinutes(), 2) + ':' + p(d.getSeconds(), 2) + '.' + p(d.getMilliseconds(), 3)
+  }
+  function activeLinkId() { return linkByMode[state.mode] }
+  function activeLink() { const id = activeLinkId(); return id ? links[id] : undefined }
+
+  function toUI(entry) {
+    return {
+      q: entry.q, t: entry.t, dir: entry.d, peer: entry.p || '',
+      bytes: b64ToBytes(entry.b), x: Boolean(entry.x),
+    }
+  }
+
+  /* ── 日志渲染 ── */
+  function hexLine(item) {
+    if (item.dir === 'tx') return '> ' + hexOf(item.bytes)
+    return item.q.toString(16).toUpperCase().padStart(6, '0') + '  ' + hexOf(item.bytes)
+  }
+  function makeLine(item) {
+    const decoded = decodeBytes(item.bytes, state.enc)
+    const useHex = state.hex || item.x
+    const text = useHex ? hexLine(item) : decoded.text
+    const full = useHex ? hexOf(item.bytes) : decoded.text
+    if (state.filter && full.toLowerCase().indexOf(state.filter) === -1) return null
+
+    const div = document.createElement('div')
+    div.className = 'line ' + (item.dir === 'sys' ? 'dim' : 'info') + (decoded.bad && !useHex ? ' bad' : '')
+    const ts = document.createElement('span')
+    ts.className = 'ts'
+    ts.textContent = fmtTime(item.t)
+    if (!state.ts) ts.style.display = 'none'
+    const tag = document.createElement('span')
+    tag.className = 'tag ' + item.dir
+    tag.textContent = item.dir.toUpperCase()
+    div.appendChild(ts)
+    div.appendChild(tag)
+    if (item.x && !state.hex) {
+      const badge = document.createElement('span')
+      badge.className = 'rawbadge'
+      badge.textContent = 'HEX'
+      div.appendChild(badge)
+    }
+    if (item.peer) {
+      const peer = document.createElement('span')
+      peer.className = item.dir === 'tx' ? 'dst' : 'src'
+      peer.textContent = item.peer
+      div.appendChild(peer)
+    }
+    const msg = document.createElement('span')
+    msg.className = 'msg'
+    msg.textContent = text
+    div.appendChild(msg)
+    return div
+  }
+
+  function renderLog() {
+    const id = activeLinkId()
+    const list = id ? (logs.get(id) || []) : []
+    const prevTop = logEl.scrollTop
+    const wasFollowing = followTail
+    logEl.innerHTML = ''
+    logEl.classList.toggle('hexmode', state.hex)
+    for (const item of list) {
+      const line = makeLine(item)
+      if (line) logEl.appendChild(line)
+    }
+    if (!list.length) {
+      const empty = document.createElement('div')
+      empty.className = 'line dim'
+      empty.style.padding = '10px 12px'
+      empty.textContent = id ? '暂无数据，等待收发…' : '当前模式未打开链路。'
+      logEl.appendChild(empty)
+    }
+    if (state.auto && wasFollowing) {
+      logEl.scrollTop = logEl.scrollHeight
+      followTail = true
+    } else {
+      logEl.scrollTop = prevTop
+    }
+    updateJump()
+    updateCounters()
+  }
+
+  function updateJump() {
+    $('jumpBottom').classList.toggle('show', !followTail && logEl.scrollHeight > logEl.clientHeight)
+  }
+  logEl.addEventListener('scroll', () => {
+    followTail = (logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight) < 16
+    updateJump()
+  })
+  $('jumpBottom').addEventListener('click', () => {
+    followTail = true
+    logEl.scrollTop = logEl.scrollHeight
+    updateJump()
+  })
+
+  function updateCounters() {
+    const link = activeLink()
+    $('rxBytes').textContent = fmtBytes(link ? link.rx : 0)
+    $('txBytes').textContent = fmtBytes(link ? link.tx : 0)
+    $('peerStat').textContent = '对端 ' + (link && link.peers ? link.peers.length : 0)
+    $('bufPct').textContent = Math.min(99, Math.round(((activeLinkId() && logs.get(activeLinkId()) || []).length / 2000) * 100)) + '%'
+    $('statCfg').textContent = linkConfigText()
+  }
+
+  function linkConfigText() {
+    const link = activeLink()
+    if (link) {
+      const c = link.config || {}
+      if (link.type === 'serial') return '串口 ' + c.path + ' @ ' + c.baudRate
+      if (link.type === 'tcpServer') return 'TCP ' + c.host + ':' + c.port
+      if (link.type === 'tcpClient') return 'TCP → ' + c.host + ':' + c.port
+      if (link.type === 'udp') return 'UDP ' + c.localPort + ' → ' + c.remoteHost + ':' + c.remotePort
+    }
+    if (state.mode === 'serial') return $('baudLabel').textContent + ' 8N1'
+    if (state.mode === 'tcpServer') return 'TCP ' + $('tsHostLabel').textContent + ':' + $('tsPort').value
+    if (state.mode === 'tcpClient') return 'TCP → ' + $('tcHost').value + ':' + $('tcPort').value
+    return 'UDP ' + $('udpLocal').value + ' → ' + $('udpHost').value + ':' + $('udpPort').value
+  }
+
+  /* ── 状态 / 头部 ── */
+  function updateHead() {
+    const link = activeLink()
+    const on = Boolean(link && link.open)
+    $('headLed').className = 'led' + (on ? ' on' : '')
+    $('headText').textContent = link ? (on ? MODE_LABEL[link.type] + ' 已打开' : MODE_LABEL[link.type] + ' 已关闭') : MODE_LABEL[state.mode] + ' 未打开'
+    syncButtons()
+    renderQuick()
+    updateCounters()
+  }
+
+  function syncButtons() {
+    const pairs = [
+      ['serialBtn', linkByMode.serial],
+      ['tsBtn', linkByMode.tcpServer],
+      ['tcBtn', linkByMode.tcpClient],
+      ['udpBtn', linkByMode.udp],
+    ]
+    const labels = { serialBtn: ['打开', '关闭'], tsBtn: ['监听', '停止'], tcBtn: ['连接', '断开'], udpBtn: ['打开', '关闭'] }
+    for (const [btnId, linkId] of pairs) {
+      const btn = $(btnId)
+      const open = Boolean(linkId && links[linkId] && links[linkId].open)
+      btn.textContent = labels[btnId][open ? 1 : 0]
+      btn.classList.toggle('close', open)
+    }
+  }
+
+  /* ── 轮询 ── */
+  async function poll() {
+    if (polling) return
+    polling = true
+    try {
+      const data = await api('/comm/api/poll?since=' + cursor)
+      cursor = data.cursor || cursor
+      const alive = new Set()
+      for (const link of data.links) { links[link.id] = link; alive.add(link.id) }
+      for (const id of Object.keys(links)) if (!alive.has(id)) delete links[id]
+
+      let activeNew = false
+      for (const entry of data.entries) {
+        if (!logs.has(entry.l)) logs.set(entry.l, [])
+        const item = toUI(entry)
+        const arr = logs.get(entry.l)
+        arr.push(item)
+        if (arr.length > 2000) arr.splice(0, arr.length - 2000)
+        if (recording) {
+          recorded.push(item)
+          $('recStat').textContent = '● 录制中 ' + recorded.length
+        }
+        if (entry.l === activeLinkId()) activeNew = true
+      }
+      if (activeNew) renderLog()
+      updateHead()
+    } catch (error) {
+      $('headLed').className = 'led err'
+      $('headText').textContent = 'Host 连接失败'
+      $('statCfg').textContent = String(error.message || error)
+    } finally {
+      polling = false
+      setTimeout(poll, 300)
+    }
+  }
+
+  /* ── 打开 / 关闭 ── */
+  function openOptions() {
+    if (state.mode === 'serial') {
+      return { path: $('serialPort').value, baudRate: Number($('baudLabel').textContent) }
+    }
+    if (state.mode === 'tcpServer') {
+      return { host: $('tsHostLabel').textContent, port: Number($('tsPort').value) }
+    }
+    if (state.mode === 'tcpClient') {
+      return { host: $('tcHost').value.trim(), port: Number($('tcPort').value) }
+    }
+    return {
+      localPort: Number($('udpLocal').value),
+      remoteHost: $('udpHost').value.trim(),
+      remotePort: Number($('udpPort').value),
+    }
+  }
+
+  async function toggleLink() {
+    const mode = state.mode
+    const id = linkByMode[mode]
+    if (id && links[id] && links[id].open) {
+      try {
+        await api('/comm/api/close', 'POST', { link: id })
+        linkByMode[mode] = null
+        delete links[id]
+        renderLog()
+        updateHead()
+        toast('已关闭 ' + MODE_LABEL[mode])
+      } catch (error) { toast('关闭失败：' + error.message) }
+      return
+    }
+    try {
+      const res = await api('/comm/api/open', 'POST', { type: mode, options: openOptions() })
+      linkByMode[mode] = res.link.id
+      links[res.link.id] = res.link
+      logs.set(res.link.id, [])
+      renderLog()
+      updateHead()
+      toast('已打开 ' + res.link.label)
+    } catch (error) { toast('打开失败：' + error.message) }
+  }
+
+  /* ── 串口列表 ── */
+  async function loadPorts() {
+    try {
+      const data = await api('/comm/api/ports')
+      serialPorts = data.ports || []
+      const sel = $('serialPort')
+      sel.innerHTML = ''
+      for (const port of serialPorts) {
+        const opt = document.createElement('option')
+        opt.value = port.path
+        opt.textContent = port.path + (port.manufacturer ? ' · ' + port.manufacturer : '')
+        sel.appendChild(opt)
+      }
+      if (!serialPorts.length) {
+        const opt = document.createElement('option')
+        opt.value = ''
+        opt.textContent = '未发现串口'
+        sel.appendChild(opt)
+      }
+      $('serialLabel').textContent = serialPorts.length ? serialPorts[0].path : '未发现串口'
+      $('serialHint').textContent = data.available ? '' : ('serialport 不可用：' + (data.error || '未安装') + '（网络功能不受影响）')
+    } catch (error) {
+      $('serialHint').textContent = '串口列表加载失败：' + error.message
+    }
+  }
+
+  /* ── 快捷输入（可自定义） ── */
+  const QUICK_KEY = 'dsh-comm-quick-v1'
+  const quickDefaults = {
+    serial: [
+      { name: 'AT+GMR', data: 'AT+GMR', mode: 'text' },
+      { name: 'AT+RST', data: 'AT+RST', mode: 'text' },
+      { name: 'PING', data: 'PING', mode: 'text' },
+    ],
+    tcpServer: [
+      { name: 'GET /', data: 'GET / HTTP/1.1', mode: 'text' },
+      { name: 'PING', data: 'PING', mode: 'text' },
+    ],
+    tcpClient: [
+      { name: 'PING', data: 'PING', mode: 'text' },
+      { name: 'REBOOT', data: '{"cmd":"reboot"}', mode: 'text' },
+    ],
+    udp: [
+      { name: 'PING', data: 'PING', mode: 'text' },
+      { name: 'AA55', data: 'AA 55 01', mode: 'hex' },
+    ],
+  }
+  function cloneQuick(value) { return JSON.parse(JSON.stringify(value)) }
+  function loadQuickStore() {
+    const store = cloneQuick(quickDefaults)
+    try {
+      const raw = localStorage.getItem(QUICK_KEY)
+      if (raw) {
+        const saved = JSON.parse(raw)
+        for (const key of Object.keys(store)) if (saved && Array.isArray(saved[key])) store[key] = saved[key]
+      }
+    } catch { /* ignore */ }
+    return store
+  }
+  function persistQuick(store) {
+    try { localStorage.setItem(QUICK_KEY, JSON.stringify(store)) } catch { /* ignore */ }
+  }
+  const quickStore = loadQuickStore()
+  const quickList = () => quickStore[state.mode] || []
+
+  function renderQuick() {
+    const row = $('quickRow')
+    row.innerHTML = '<span class="quick-label">快捷</span>'
+    const list = quickList()
+    if (!list.length) {
+      const empty = document.createElement('span')
+      empty.className = 'quick-empty'
+      empty.textContent = '（未配置）'
+      row.appendChild(empty)
+    }
+    for (const item of list) {
+      const btn = document.createElement('button')
+      btn.className = 'chip'
+      btn.textContent = item.name || item.data
+      btn.title = (item.mode === 'hex' ? '[HEX] ' : '') + item.data
+      btn.addEventListener('click', () => sendPreset(item))
+      row.appendChild(btn)
+    }
+    const edit = document.createElement('button')
+    edit.className = 'chip edit'
+    edit.textContent = '✎ 编辑'
+    edit.addEventListener('click', openQuickEditor)
+    row.appendChild(edit)
+  }
+
+  function sendPreset(item) {
+    const linkId = activeLinkId()
+    if (!linkId) { toast('请先打开链路'); return }
+    if (item.mode === 'hex') {
+      api('/comm/api/write', 'POST', { link: linkId, hex: item.data })
+        .then(() => toast('已发送：' + (item.name || item.data)))
+        .catch((error) => toast('发送失败：' + error.message))
+    } else {
+      const text = item.data + eolText()
+      api('/comm/api/write', 'POST', { link: linkId, text, encoding: state.enc })
+        .then(() => toast('已发送：' + (item.name || item.data)))
+        .catch((error) => toast('发送失败：' + error.message))
+    }
+  }
+
+  function renderQuickEditor() {
+    const rows = $('quickRows')
+    rows.innerHTML = ''
+    if (!quickDraft.length) {
+      const empty = document.createElement('div')
+      empty.className = 'quick-empty'
+      empty.textContent = '还没有快捷项，点「＋ 添加」创建一条。'
+      rows.appendChild(empty)
+    }
+    quickDraft.forEach((item, idx) => {
+      const row = document.createElement('div')
+      row.className = 'qrow'
+      const name = document.createElement('input')
+      name.className = 'mini-input'
+      name.placeholder = '名称'
+      name.value = item.name || ''
+      const data = document.createElement('input')
+      data.className = 'mini-input'
+      data.placeholder = item.mode === 'hex' ? 'AA 55 01' : '要发送的内容'
+      data.value = item.data || ''
+      const mode = document.createElement('select')
+      mode.className = 'qmode'
+      mode.innerHTML = '<option value="text">文本</option><option value="hex">HEX</option>'
+      mode.value = item.mode === 'hex' ? 'hex' : 'text'
+      const del = document.createElement('button')
+      del.className = 'qdel'
+      del.textContent = '×'
+      del.addEventListener('click', () => { quickDraft.splice(idx, 1); renderQuickEditor() })
+      name.addEventListener('input', () => { item.name = name.value })
+      data.addEventListener('input', () => { item.data = data.value })
+      mode.addEventListener('change', () => {
+        item.mode = mode.value
+        data.placeholder = item.mode === 'hex' ? 'AA 55 01' : '要发送的内容'
+      })
+      row.appendChild(name); row.appendChild(data); row.appendChild(mode); row.appendChild(del)
+      rows.appendChild(row)
+    })
+  }
+  function openQuickEditor() {
+    quickDraft = cloneQuick(quickList())
+    $('quickModeName').textContent = '· ' + MODE_LABEL[state.mode]
+    renderQuickEditor()
+    $('quickBackdrop').classList.add('show')
+  }
+  function closeQuickEditor() { $('quickBackdrop').classList.remove('show') }
+  $('quickAdd').addEventListener('click', () => { quickDraft.push({ name: '', data: '', mode: 'text' }); renderQuickEditor() })
+  $('quickReset').addEventListener('click', () => { quickDraft = cloneQuick(quickDefaults[state.mode] || []); renderQuickEditor() })
+  $('quickCancel').addEventListener('click', closeQuickEditor)
+  $('quickClose').addEventListener('click', closeQuickEditor)
+  $('quickSave').addEventListener('click', () => {
+    const cleaned = quickDraft
+      .filter((item) => item.data && item.data.trim())
+      .map((item) => ({ name: (item.name || '').trim(), data: item.data.trim(), mode: item.mode === 'hex' ? 'hex' : 'text' }))
+    quickStore[state.mode] = cleaned
+    persistQuick(quickStore)
+    renderQuick()
+    closeQuickEditor()
+    toast('快捷输入已保存 · ' + cleaned.length + ' 项')
+  })
+  $('quickBackdrop').addEventListener('click', (event) => { if (event.target === $('quickBackdrop')) closeQuickEditor() })
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeQuickEditor() })
+
+  /* ── 发送 ── */
+  function eolText() {
+    const value = $('eolSel').value
+    if (value === 'LF') return '\n'
+    if (value === 'CR') return '\r'
+    if (value === '无') return ''
+    return '\r\n'
+  }
+  function setSendMode(hex) {
+    state.sendHex = hex
+    const input = $('sendInput')
+    input.placeholder = hex ? 'HEX：AA 55 01，支持 0x 前缀、空格/逗号分隔' : '输入要发送的数据…（回车发送）'
+    $('sendHint').textContent = hex ? 'HEX 发送：按字节解析，不追加行尾' : '文本按所选编码发送；HEX 按字节解析'
+    input.classList.remove('invalid')
+  }
+  $('sendSeg').addEventListener('click', (event) => {
+    const btn = event.target.closest('button')
+    if (!btn) return
+    for (const child of $('sendSeg').children) child.classList.remove('active')
+    btn.classList.add('active')
+    setSendMode(btn.dataset.mode === 'hex')
+  })
+
+  async function send(fromPeriodic) {
+    const linkId = activeLinkId()
+    if (!linkId) { toast('请先打开链路'); return }
+    const input = $('sendInput')
+    const raw = input.value
+    if (!raw) return
+    input.classList.remove('invalid')
+    try {
+      if (state.sendHex) {
+        await api('/comm/api/write', 'POST', { link: linkId, hex: raw })
+      } else {
+        await api('/comm/api/write', 'POST', { link: linkId, text: raw + eolText(), encoding: state.enc })
+      }
+      if (!fromPeriodic) { input.value = ''; input.focus() }
+    } catch (error) {
+      input.classList.add('invalid')
+      toast('发送失败：' + error.message)
+    }
+  }
+  $('sendBtn').addEventListener('click', () => send(false))
+  $('sendInput').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') { event.preventDefault(); send(false) }
+  })
+
+  function stopPeriodic() {
+    if (periodicTimer) { clearInterval(periodicTimer); periodicTimer = null }
+  }
+  function startPeriodicIfNeeded() {
+    stopPeriodic()
+    if (!$('periodic').checked) return
+    const ms = Math.max(100, Number($('periodMs').value) || 1000)
+    periodicTimer = setInterval(() => send(true), ms)
+  }
+  $('periodic').addEventListener('change', startPeriodicIfNeeded)
+  $('periodMs').addEventListener('change', () => { if ($('periodic').checked) startPeriodicIfNeeded() })
+
+  /* ── 日志导出 / 录制 ── */
+  function pad2(n) { return String(n).padStart(2, '0') }
+  function fileStamp() {
+    const d = new Date()
+    return '' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '-' + pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds())
+  }
+  function download(name, data, mime) {
+    const blob = data instanceof Blob ? data : new Blob([data], { type: mime || 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = name
+    document.body.appendChild(a); a.click()
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove() }, 200)
+  }
+  function exportSource() { return recorded.length ? recorded : (logs.get(activeLinkId()) || []) }
+  function oneLine(item) {
+    const decoded = decodeBytes(item.bytes, state.enc)
+    const dir = item.dir === 'tx' ? 'TX' : (item.dir === 'sys' ? 'SYS' : 'RX')
+    const peer = item.peer ? ' ' + (item.dir === 'tx' ? 'dst=' : 'src=') + item.peer : ''
+    const text = item.x ? '[binary]' : decoded.text.replace(/[\r\n]+/g, '\\n')
+    return '[' + fmtTime(item.t) + '] ' + dir + peer + ' | ' + hexOf(item.bytes) + ' | ' + text
+  }
+  function exportTxt() {
+    const list = exportSource()
+    if (!list.length) { toast('没有可导出的日志'); return }
+    const head = '# DSH 通信调试台日志\n# 模式: ' + MODE_LABEL[state.mode] + '  ' + linkConfigText() + '\n# 编码: ' + state.enc + '\n'
+    download('comm-log-' + fileStamp() + '.log', head + list.map(oneLine).join('\n') + '\n', 'text/plain;charset=utf-8')
+    toast('已导出 ' + list.length + ' 条日志')
+  }
+  function csvCell(value) { return '"' + String(value == null ? '' : value).replace(/"/g, '""') + '"' }
+  function exportCsv() {
+    const list = exportSource()
+    if (!list.length) { toast('没有可导出的日志'); return }
+    const rows = ['time,direction,peer,encoding,text,hex']
+    for (const item of list) {
+      const decoded = decodeBytes(item.bytes, state.enc)
+      rows.push([
+        csvCell(fmtTime(item.t)), csvCell(item.dir), csvCell(item.peer),
+        csvCell(item.x ? 'binary' : state.enc), csvCell(item.x ? '' : decoded.text), csvCell(hexOf(item.bytes)),
+      ].join(','))
+    }
+    download('comm-log-' + fileStamp() + '.csv', '\uFEFF' + rows.join('\r\n'), 'text/csv;charset=utf-8')
+    toast('已导出 CSV · ' + list.length + ' 条')
+  }
+  function exportBin() {
+    const list = exportSource().filter((item) => item.dir === 'rx')
+    if (!list.length) { toast('没有接收数据可导出'); return }
+    let total = 0
+    for (const item of list) total += item.bytes.length
+    const out = new Uint8Array(total)
+    let offset = 0
+    for (const item of list) { out.set(item.bytes, offset); offset += item.bytes.length }
+    download('comm-rx-' + fileStamp() + '.bin', new Blob([out], { type: 'application/octet-stream' }))
+    toast('已导出接收字节 · ' + total + ' B')
+  }
+  function updateRecordUI() {
+    $('recordItem').textContent = recording ? '■ 停止录制' : '● 开始录制'
+    $('recStat').classList.toggle('show', recording)
+    if (recording) $('recStat').textContent = '● 录制中 ' + recorded.length
+  }
+  function toggleRecord() {
+    recording = !recording
+    if (recording) recorded = []
+    updateRecordUI()
+    toast(recording ? '开始录制日志' : '停止录制 · 共 ' + recorded.length + ' 条')
+  }
+  const logMenu = $('logMenu')
+  $('logBtn').addEventListener('click', (event) => { event.stopPropagation(); logMenu.classList.toggle('show') })
+  $('saveBtn').addEventListener('click', exportTxt)
+  document.addEventListener('click', (event) => { if (!logMenu.contains(event.target)) logMenu.classList.remove('show') })
+  logMenu.addEventListener('click', (event) => {
+    const btn = event.target.closest('button')
+    if (!btn) return
+    const act = btn.dataset.act
+    logMenu.classList.remove('show')
+    if (act === 'record') toggleRecord()
+    else if (act === 'txt') exportTxt()
+    else if (act === 'csv') exportCsv()
+    else if (act === 'bin') exportBin()
+    else if (act === 'clearRecord') { recorded = []; updateRecordUI(); toast('录制缓冲已清空') }
+  })
+
+  /* ── 模式 / 配置 ── */
+  function applyMode(mode) {
+    state.mode = mode
+    for (const btn of $('modeTabs').children) btn.classList.toggle('active', btn.dataset.mode === mode)
+    const map = { serial: 'cfgSerial', tcpServer: 'cfgTcpServer', tcpClient: 'cfgTcpClient', udp: 'cfgUdp' }
+    for (const id of ['cfgSerial', 'cfgTcpServer', 'cfgTcpClient', 'cfgUdp']) {
+      $(id).classList.toggle('active', id === map[mode])
+    }
+    renderLog()
+    updateHead()
+    if (mode === 'serial') loadPorts()
+  }
+  $('modeTabs').addEventListener('click', (event) => {
+    const btn = event.target.closest('button')
+    if (btn) applyMode(btn.dataset.mode)
+  })
+
+  /* ── 工具栏 ── */
+  $('modeSeg').addEventListener('click', (event) => {
+    const btn = event.target.closest('button')
+    if (!btn) return
+    for (const child of $('modeSeg').children) child.classList.remove('active')
+    btn.classList.add('active')
+    state.hex = btn.dataset.mode === 'hex'
+    renderLog()
+  })
+  $('encSel').addEventListener('change', (event) => {
+    state.enc = event.target.value
+    $('encLabel').textContent = event.target.options[event.target.selectedIndex].textContent
+    $('encStat').textContent = $('encLabel').textContent
+    renderLog()
+  })
+  $('tTs').addEventListener('change', (event) => { state.ts = event.target.checked; renderLog() })
+  $('tAuto').addEventListener('change', (event) => { state.auto = event.target.checked; if (event.target.checked) { followTail = true; renderLog() } })
+  $('tPause').addEventListener('change', (event) => { state.paused = event.target.checked })
+  $('clearBtn').addEventListener('click', () => {
+    const id = activeLinkId()
+    if (id) logs.set(id, [])
+    renderLog()
+  })
+  $('filterInput').addEventListener('input', (event) => {
+    state.filter = event.target.value.trim().toLowerCase()
+    renderLog()
+  })
+
+  /* ── 串口 / 网络按钮 ── */
+  $('serialBtn').addEventListener('click', toggleLink)
+  $('tsBtn').addEventListener('click', toggleLink)
+  $('tcBtn').addEventListener('click', toggleLink)
+  $('udpBtn').addEventListener('click', toggleLink)
+  $('serialPort').addEventListener('change', () => {
+    const opt = $('serialPort').selectedOptions[0]
+    $('serialLabel').textContent = opt ? opt.textContent : '选择串口…'
+  })
+  $('serialBaud').addEventListener('change', () => {
+    $('baudLabel').textContent = $('serialBaud').value
+    updateCounters()
+  })
+  $('tsHost').addEventListener('change', () => { $('tsHostLabel').textContent = $('tsHost').value })
+  $('eolSel').addEventListener('change', () => { $('eolLabel').textContent = $('eolSel').value })
+  $('saveBtn').textContent = '导出日志'
+
+  /* ── 初始化 ── */
+  for (const [value, label] of ENCODINGS) {
+    const opt = document.createElement('option')
+    opt.value = value
+    opt.textContent = label
+    $('encSel').appendChild(opt)
+  }
+  $('encSel').value = state.enc
+  setSendMode(false)
+  applyMode('serial')
+  updateRecordUI()
+  poll()
+})()
+</script>
+</body>
+</html>

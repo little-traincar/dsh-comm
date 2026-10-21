@@ -1,0 +1,16 @@
+# dsh-comm 组合包 patch：安装进 profile 时由 dsh 自动应用本层。
+#
+# 该插件只挂载一个 Host 入口（lib/index.js）：
+#   - 注册串口 / TCP / UDP 的 LinkManager 与模型工具
+#   - 在 webServer 上挂 /comm 前缀路由：内嵌 UI + 轮询 API
+#   - 向 DSH index 注入 window.__DSH_COMM__（base + 本次进程 token），
+#     供 Client 半边的 iframe 读取
+# Client 半边由 package.json 的 dsh.client 自动组合，不需要单独 insert。
+- insert:
+    - id: dsh-comm
+      name: 'dsh-comm'
+      config:
+        maxLogEntries: 2000
+        maxReadEntries: 200
+        # 留空则每次启动随机生成；调试期可固定一个值
+        uiToken: ''
