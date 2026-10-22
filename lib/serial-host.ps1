@@ -105,19 +105,49 @@ function Notify-Closed($reason) {
   try { Send-Comm @{ ev = 'closed'; msg = [string]$reason } } catch { }
 }
 
-$readTask = [Console]::In.ReadLineAsync()
+# IMPORTANT: [Console]::In.ReadLineAsync() blocks synchronously in a console-less
+# PowerShell 5.1 process with a redirected stdin pipe. Calling it inside the main
+# loop starved the serial RX block below, so serial receive never ran (TX worked
+# because each stdin command unblocked the call). Read the raw stdin stream with
+# ReadAsync instead: it is thread-pool backed and returns a pending Task without
+# blocking the loop.
+$stdin = [Console]::OpenStandardInput()
+$stdinBuf = New-Object byte[] 16384
+$stdinText = ''
+$stdinClosed = $false
+$stdinTask = $stdin.ReadAsync($stdinBuf, 0, $stdinBuf.Length)
+
+function Get-StdinLines {
+  $lines = New-Object System.Collections.ArrayList
+  while ($true) {
+    if ($null -eq $script:stdinTask) { break }
+    if (-not $script:stdinTask.IsCompleted) { break }
+    $n = 0
+    try { $n = $script:stdinTask.Result } catch { $n = 0 }
+    if ($n -le 0) {
+      $script:stdinClosed = $true
+      $script:stdinTask = $null
+      break
+    }
+    $script:stdinText += [System.Text.Encoding]::UTF8.GetString($script:stdinBuf, 0, $n)
+    while (($idx = $script:stdinText.IndexOf([char]10)) -ge 0) {
+      $line = $script:stdinText.Substring(0, $idx).TrimEnd([char]13)
+      $script:stdinText = $script:stdinText.Substring($idx + 1)
+      [void]$lines.Add($line)
+    }
+    $script:stdinTask = $script:stdin.ReadAsync($script:stdinBuf, 0, $script:stdinBuf.Length)
+  }
+  return $lines
+}
 
 while ($running) {
   # 1) drain every stdin message that has arrived
-  while ($readTask.IsCompleted) {
-    $line = $null
-    try { $line = $readTask.Result } catch { $line = $null }
-    if ($null -eq $line) { $running = $false; break }
+  foreach ($line in @(Get-StdinLines)) {
+    if ([string]::IsNullOrWhiteSpace($line)) { continue }
 
     $msg = $null
     try { $msg = $line | ConvertFrom-Json } catch {
       Send-Comm @{ id = 0; ok = $false; error = 'invalid json' }
-      $readTask = [Console]::In.ReadLineAsync()
       continue
     }
 
@@ -149,8 +179,33 @@ while ($running) {
         'write' {
           if ($null -eq $port -or -not $port.IsOpen) { throw 'serial port is not open' }
           $bytes = [Convert]::FromBase64String([string]$msg.b64)
-          $port.Write($bytes, 0, $bytes.Length)
-          Send-Comm @{ id = $msg.id; ok = $true }
+          if ($bytes.Length -le 0) {
+            Send-Comm @{ id = $msg.id; ok = $false; error = 'empty write payload'; errorType = 'EmptyPayload' }
+          } else {
+            try {
+              $port.Write($bytes, 0, $bytes.Length)
+              Send-Comm @{ id = $msg.id; ok = $true }
+            } catch {
+              # Keep this file pure ASCII (PowerShell 5.1 reads BOM-less .ps1 as ANSI);
+              # the Node side maps errorType to a user-facing Chinese hint.
+              try {
+                $ex = $_.Exception
+                if ($null -ne $ex.InnerException) { $ex = $ex.InnerException }
+                $text = [string]$ex.Message
+                $kind = [string]$ex.GetType().Name
+                $isTimeout = ($ex -is [System.TimeoutException]) -or ($text -match 'timed out|timeout')
+                $isGone = ($text -match 'not open|closed|denied|not recognized|aborted|does not exist|removed|invalid handle|device has been')
+                if ($isTimeout) { $kind = 'Timeout' } elseif ($isGone) { $kind = 'Disconnected' }
+                Send-Comm @{ id = $msg.id; ok = $false; error = $text; errorType = $kind }
+                if ($isGone) {
+                  # Unplugged / driver lost the port: notify Node and exit so it can auto-reconnect.
+                  Notify-Closed $text
+                  Close-Port
+                  $running = $false
+                }
+              } catch { }
+            }
+          }
         }
         'signals' {
           if ($null -eq $port) { throw 'serial port is not open' }
@@ -203,8 +258,8 @@ while ($running) {
     }
 
     if (-not $running) { break }
-    $readTask = [Console]::In.ReadLineAsync()
   }
+  if ($script:stdinClosed) { $running = $false }
   if (-not $running) { break }
 
   # 2) restore a pending pulse level when its delay elapsed

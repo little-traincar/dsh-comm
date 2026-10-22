@@ -179,11 +179,21 @@ node test/client.mjs         # Client：假 ModuleLoader/React/ctx
 node test/api-v2.mjs         # v2 HTTP API：timer/serial 守卫/write+expect/auto debounce
 node test/auto-reply.mjs     # 自动回复规则 + 持久化
 node test/ai-dedicated.mjs   # 专用会话：自动创建/复用/持久化/失败兜底/旧模式
+node test/serial-errors.mjs  # 串口写失败：超时/参数错误/断开/空内容 的提示与自动重连
+node test/serial-bridge-rx.mjs # 串口桥 RX 回归（需真实/虚拟串口对，见下）
 node test/host-features.mjs  # 串口参数/信号/脉冲/重连、定时/序列、缓冲、write+expect
 node test/stress-buffer.mjs  # 缓冲/吞吐/延迟压测
 node test/ui-features.mjs    # UI：jsdom + fake Host（串口参数、定时器、自动回复防抖）
 node test/ui-host.mjs        # UI + 真实 v2 Host 端到端（jsdom，无需 DSH 进程）
 node test/resilience.mjs     # 稳定性：回显抑制/冷却/频率上限/定时器异常隔离/会话服务卡死
+```
+
+串口桥 RX 回归需要一对串口（真实 USB 转串口短接 TX/RX，或用虚拟串口对）：
+
+```powershell
+$env:DSH_COMM_RX_PORT='COM0'   # 插件打开的一端
+$env:DSH_COMM_TX_PORT='COM10'  # 从这一端写入
+node test/serial-bridge-rx.mjs
 ```
 
 需要真实 DSH 的 UI 测试：
@@ -201,6 +211,7 @@ node test/ui-live.mjs <插件 token>
 
 - 所有定时器（`setTimeout`/`setInterval`）都 `unref` 且回调内部 `try/catch`：定时发送/序列/重连/健康检查里任何异常只会停掉对应链路并记一条系统日志，不会作为未捕获异常抛进 Host 进程。
 - 所有 PowerShell 调用（端口枚举、串口操作）都有超时；`comm_list` / `/comm/api/ports` 不会永久挂起。
+- **串口桥的 stdin 用原始标准输入流 `ReadAsync` 读取**，不再用 `Console.In.ReadLineAsync()`：后者在无控制台、stdin 被重定向的 PowerShell 5.1 里会**同步阻塞**，曾导致 RX 循环被饿死——表现为「能发不能收」。`test/serial-bridge-rx.mjs` 是这条路径的回归测试。
 - `comm_write` 的 `expect` 等待者在成功/超时后都会清理，不会随调用次数堆积。
 - 自动回复有回显抑制、500ms 冷却、每分钟 30 次上限；会话 `list/create/rename/prompt` 都有超时，DSH 会话服务卡住时自动回复会失败并记日志，其它工具/接口不受影响。
 - 内存：每链路日志 4 MiB / 2000 条硬上限；`write+expect` 等待者只在有并发请求时短暂存在；自动回复待处理消息最多 50 条。
@@ -208,7 +219,9 @@ node test/ui-live.mjs <插件 token>
 ## 已知限制
 
 - **串口仅 Windows**：走 PowerShell 桥；Linux/macOS 暂不支持（网络功能跨平台）。
-- 串口功能已用假桥覆盖参数/信号/重连/定时逻辑，但开发机没有真实 USB 转串口设备，**真实硬件行为尚未逐项验证**；第一次接设备建议先用小设备验证 7E1/2 停止位/流控/复位脉冲。
+- **虚拟串口写报「参数错误」不是插件问题**：这类错误由驱动返回（Win32 `ERROR_INVALID_PARAMETER`），常见于 HHD/Eltima 等虚拟串口只建了单端、对端程序没打开，或端口被配置成别名/共享/TCP/管道但没有后端。用纯 .NET `SerialPort.Write` 直接写同一个口也会报同样的错。解决：把虚拟串口配置成一对本地桥接端口（vysercfg / Eltima / com0com），并在另一端用串口工具打开；或者直接用真实 USB 转串口设备。
+- **虚拟串口工具和 .NET `SerialPort` 可能不兼容**：本次实测「智嵌物联网 虚拟串口增强版 V110」（`E:\my_software\zhiqian\vspd.exe`，ELTIMA VSBC9 驱动）的 COM0↔COM10 对：**两个 SSCOM（legacy 同步 Win32 I/O）双向都通，但纯 .NET、最小设置的收发程序同一对端口上时通时不通**；插件走 .NET `SerialPort`，因此在这类虚拟口上可能表现不稳定。这不是插件逻辑问题（同一份最小 .NET 程序就能复现），建议用 **com0com** 或真实 USB 转串口验证；需要坚持用这个虚拟口时可以反馈，我们可以加一套 Win32 同步 I/O 后备实现。
+- 串口功能已用假桥覆盖参数/信号/重连/定时逻辑，真实 USB 转串口已用「桥接收数据」回归测试验证 RX；`7E1/2 停止位/流控/复位脉冲` 等仍需按设备实测。
 - TCP 客户端没有自动重连（串口有）；TCP 是流视图，还没有帧/粘包解析。
 - 浏览器侧「录制日志」仍只在浏览器内存里；Host 侧日志缓冲是有限的（见上）。
 - 公网/远程访问依赖 DSH 自己的部署方式，本插件不额外加鉴权层，只靠进程 token + 同源 Cookie。
