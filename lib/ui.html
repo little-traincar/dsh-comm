@@ -83,7 +83,7 @@
   .tag.tx{color:#8FB4FF;background:#17233F}
   .tag.sys{color:#7EE2A8;background:#13261B}
   .rawbadge{flex:none;font-size:9px;font-weight:700;color:#9FB4FF;background:#1B2440;border:1px solid #2A3560;border-radius:3px;padding:0 4px;height:14px;line-height:13px;margin-top:3px}
-  .src,.dst{flex:none;font-size:10px;border-radius:3px;padding:0 4px;height:14px;line-height:14px;margin-top:3px;max-width:118px;overflow:hidden;text-overflow:ellipsis}
+  .src,.dst{flex:none;font-size:10px;border-radius:3px;padding:0 4px;height:14px;line-height:14px;margin-top:3px;max-width:240px;overflow:hidden;text-overflow:ellipsis}
   .src{color:#6E8AB8;background:#121B2B}
   .dst{color:#8FA6FF;background:#18203B}
   .line .msg{flex:1;min-width:0;color:#C9D2E3}
@@ -114,7 +114,7 @@
   .send-primary:hover{background:#5C78FF}
   .send-primary:disabled{opacity:.45;cursor:not-allowed}
   .ms-label{color:var(--dim);font-size:10px}
-  .status{flex:none;height:28px;display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--dim);font-size:10.5px;font-family:var(--mono);white-space:nowrap;overflow-x:auto}
+  .status{flex:none;min-height:28px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:2px 12px;color:var(--dim);font-size:10.5px;font-family:var(--mono);white-space:normal;overflow-x:hidden}
   .status b{color:#AEB9CC;font-weight:500}
   .status .sep{color:#2A3346}
   .status .right{margin-left:auto;display:flex;gap:8px;align-items:center}
@@ -453,6 +453,7 @@
       const peer = document.createElement('span')
       peer.className = item.dir === 'tx' ? 'dst' : 'src'
       peer.textContent = item.peer
+      peer.title = item.peer
       div.appendChild(peer)
     }
     const msg = document.createElement('span')
