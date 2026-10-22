@@ -96,6 +96,16 @@
   .hexmode .line .msg{color:#8FA1BF;letter-spacing:.3px}
   .jump-bottom{position:absolute;right:16px;bottom:12px;height:24px;padding:0 9px;border-radius:12px;border:1px solid #2F3E63;background:#1A2440;color:#B9C8FF;font-size:10.5px;display:none;box-shadow:0 4px 12px #00000055}
   .jump-bottom.show{display:block}
+  .auto-panel{flex:none;border-bottom:1px solid var(--line-soft);background:#0E1522;padding:8px 12px 10px;display:flex;flex-direction:column;gap:6px;max-height:230px;overflow-y:auto}
+  .auto-panel[hidden]{display:none}
+  .auto-head{display:flex;align-items:center;gap:8px;color:var(--dim);font-size:10.5px}
+  .auto-head b{color:#AEB9CC;font-weight:600;font-size:11px}
+  .auto-head .spacer{flex:1}
+  .auto-row{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--dim)}
+  .auto-row select,.auto-row input[type=text],.auto-row input[type=number]{height:22px;background:#0B1220;border:1px solid var(--line);border-radius:4px;color:#C9D2E3;font-size:10.5px;padding:0 5px;min-width:0}
+  .auto-row .grow{flex:1;min-width:60px}
+  .auto-row .w60{width:60px;flex:none}
+  .auto-empty{color:var(--dim);font-size:10.5px;padding:2px 0}
   .send{flex:none;padding:9px 12px;display:flex;flex-direction:column;gap:7px;border-bottom:1px solid var(--line-soft)}
   .quick{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:22px}
   .quick-label{color:var(--dim);font-size:10.5px}
@@ -234,8 +244,25 @@
     <label class="toggle"><input type="checkbox" id="tTs" checked><i></i>时间戳</label>
     <label class="toggle"><input type="checkbox" id="tAuto" checked><i></i>自动滚动</label>
     <label class="toggle"><input type="checkbox" id="tPause"><i></i>暂停</label>
+    <button class="ghost-btn" id="autoBtn" title="按规则自动回复收到的数据">自动回复</button>
     <button class="ghost-btn" id="clearBtn" title="清空当前链路的日志（Host 侧一并清除，重进面板不会回来）">清空日志</button>
     <input class="filter" id="filterInput" placeholder="过滤…">
+  </div>
+
+  <div class="auto-panel" id="autoPanel" hidden>
+    <div class="auto-head">
+      <b>自动回复</b>
+      <label class="toggle"><input type="checkbox" id="autoEnable"><i></i>启用</label>
+      <span id="autoHint">收到匹配内容就自动回复，规则按链路保存</span>
+      <span class="spacer"></span>
+      <button class="ghost-btn" id="autoAdd">+ 规则</button>
+      <button class="ghost-btn" id="autoSave">保存</button>
+    </div>
+    <div class="auto-row">
+      <span title="没有规则时：把消息转给 DSH 会话，由模型用 comm_write 回复">无规则时</span>
+      <span id="autoAiState" class="auto-empty" style="flex:none"></span>
+    </div>
+    <div id="autoList"></div>
   </div>
 
   <div class="log-wrap">
@@ -581,6 +608,10 @@
       }
       if (activeNew) renderLog()
       updateHead()
+      if (autoOpen && activeLinkId() !== lastAutoLink) {
+        lastAutoLink = activeLinkId()
+        void loadAutoRules()
+      }
     } catch (error) {
       $('headLed').className = 'led err'
       $('headText').textContent = 'Host 连接失败'
@@ -653,8 +684,12 @@
         opt.value = ''
         opt.textContent = '未发现串口'
         sel.appendChild(opt)
+      } else if (pendingSerialPort && serialPorts.some((port) => port.path === pendingSerialPort)) {
+        sel.value = pendingSerialPort
       }
-      $('serialLabel').textContent = serialPorts.length ? serialPorts[0].path : '未发现串口'
+      pendingSerialPort = ''
+      const chosen = sel.selectedOptions[0]
+      $('serialLabel').textContent = chosen ? chosen.textContent : '未发现串口'
       $('serialHint').textContent = data.available ? '' : ('serialport 不可用：' + (data.error || '未安装') + '（网络功能不受影响）')
     } catch (error) {
       $('serialHint').textContent = '串口列表加载失败：' + error.message
@@ -823,6 +858,7 @@
     for (const child of $('sendSeg').children) child.classList.remove('active')
     btn.classList.add('active')
     setSendMode(btn.dataset.mode === 'hex')
+    saveUiSettings()
   })
 
   async function send(fromPeriodic) {
@@ -954,6 +990,7 @@
     renderLog()
     updateHead()
     if (mode === 'serial') loadPorts()
+    saveUiSettings()
   }
   $('modeTabs').addEventListener('click', (event) => {
     const btn = event.target.closest('button')
@@ -968,6 +1005,7 @@
     btn.classList.add('active')
     state.hex = btn.dataset.mode === 'hex'
     renderLog()
+    saveUiSettings()
   })
   $('encSel').addEventListener('change', (event) => {
     state.enc = event.target.value
@@ -1011,6 +1049,245 @@
   $('eolSel').addEventListener('change', () => { $('eolLabel').textContent = $('eolSel').value })
   $('saveBtn').textContent = '导出日志'
 
+  /* ── 自动回复 ── */
+  let autoRules = []
+  let autoOpen = false
+  let lastAutoLink = null
+
+  function autoSelect(options, value) {
+    const sel = document.createElement('select')
+    for (const [val, label] of options) {
+      const opt = document.createElement('option')
+      opt.value = val
+      opt.textContent = label
+      sel.appendChild(opt)
+    }
+    sel.value = value
+    return sel
+  }
+
+  function renderAutoRules() {
+    const list = $('autoList')
+    list.innerHTML = ''
+    if (!activeLinkId()) {
+      const empty = document.createElement('div')
+      empty.className = 'auto-empty'
+      empty.textContent = '先用上面的「打开」建立一条链路，规则按链路保存。'
+      list.appendChild(empty)
+      return
+    }
+    if (!autoRules.length) {
+      const empty = document.createElement('div')
+      empty.className = 'auto-empty'
+      empty.textContent = '还没有规则。点「+ 规则」添加：收到匹配内容就自动回复。'
+      list.appendChild(empty)
+      return
+    }
+    autoRules.forEach((rule, index) => {
+      const row = document.createElement('div')
+      row.className = 'auto-row'
+
+      const enabled = document.createElement('input')
+      enabled.type = 'checkbox'
+      enabled.checked = rule.enabled !== false
+      enabled.title = '启用'
+      enabled.addEventListener('change', () => { autoRules[index].enabled = enabled.checked })
+
+      const mode = autoSelect([['contains', '包含'], ['regex', '正则'], ['hex', 'HEX']], rule.mode || 'contains')
+      mode.title = '匹配方式'
+      mode.addEventListener('change', () => { autoRules[index].mode = mode.value })
+
+      const match = document.createElement('input')
+      match.type = 'text'
+      match.className = 'grow'
+      match.value = rule.match || ''
+      match.placeholder = '匹配内容'
+      match.addEventListener('input', () => { autoRules[index].match = match.value })
+
+      const arrow = document.createElement('span')
+      arrow.textContent = '→'
+
+      const reply = document.createElement('input')
+      reply.type = 'text'
+      reply.className = 'grow'
+      reply.value = rule.reply || ''
+      reply.placeholder = '回复内容'
+      reply.addEventListener('input', () => { autoRules[index].reply = reply.value })
+
+      const enc = autoSelect(ENCODINGS, rule.encoding || state.enc)
+      enc.title = '编码'
+      enc.addEventListener('change', () => { autoRules[index].encoding = enc.value })
+
+      const delay = document.createElement('input')
+      delay.type = 'number'
+      delay.className = 'w60'
+      delay.min = '0'
+      delay.max = '60000'
+      delay.value = String(rule.delayMs || 0)
+      delay.title = '延迟(ms)'
+      delay.addEventListener('input', () => { autoRules[index].delayMs = Number(delay.value) || 0 })
+
+      const target = autoSelect([['sender', '回发送者'], ['all', '广播']], rule.target || 'sender')
+      target.title = '回复对象'
+      target.addEventListener('change', () => { autoRules[index].target = target.value })
+
+      const del = document.createElement('button')
+      del.className = 'ghost-btn'
+      del.textContent = '×'
+      del.title = '删除'
+      del.addEventListener('click', () => { autoRules.splice(index, 1); renderAutoRules() })
+
+      for (const el of [enabled, mode, match, arrow, reply, enc, delay, target, del]) row.appendChild(el)
+      list.appendChild(row)
+    })
+  }
+
+  async function loadAutoRules() {
+    const id = activeLinkId()
+    if (!id) { autoRules = []; $('autoEnable').checked = false; renderAutoRules(); return }
+    try {
+      const data = await api('/comm/api/rules?link=' + encodeURIComponent(id))
+      autoRules = Array.isArray(data.rules) ? data.rules : []
+      $('autoEnable').checked = Boolean(data.enabled)
+      $('autoAiState').textContent = data.aiSession
+        ? '→ 转给 DSH 会话，由模型用 comm_write 回复'
+        : '→ 当前没有可用的 DSH 会话，不会回复'
+    } catch (error) {
+      autoRules = []
+      toast('读取自动回复规则失败：' + ((error && error.message) || error))
+    }
+    renderAutoRules()
+  }
+
+  async function saveAutoRules() {
+    const id = activeLinkId()
+    if (!id) { toast('先打开一条链路'); return }
+    try {
+      const data = await api('/comm/api/rules', 'POST', { link: id, rules: autoRules })
+      autoRules = Array.isArray(data.rules) ? data.rules : []
+      renderAutoRules()
+      toast('自动回复已保存：' + autoRules.length + ' 条')
+    } catch (error) {
+      toast('保存失败：' + ((error && error.message) || error))
+    }
+  }
+
+  $('autoBtn').addEventListener('click', async () => {
+    autoOpen = !autoOpen
+    $('autoPanel').hidden = !autoOpen
+    if (autoOpen) { lastAutoLink = activeLinkId(); await loadAutoRules() }
+  })
+  $('autoAdd').addEventListener('click', () => {
+    if (!activeLinkId()) { toast('先打开一条链路'); return }
+    autoRules.push({ enabled: true, mode: 'contains', match: '', reply: '', encoding: state.enc, delayMs: 0, target: 'sender' })
+    renderAutoRules()
+  })
+  $('autoSave').addEventListener('click', saveAutoRules)
+  $('autoEnable').addEventListener('change', async (event) => {
+    const id = activeLinkId()
+    if (!id) { event.target.checked = false; toast('先打开一条链路'); return }
+    try {
+      const data = await api('/comm/api/auto', 'POST', { link: id, enabled: event.target.checked })
+      event.target.checked = Boolean(data.enabled)
+      toast(data.enabled ? '自动回复已启用' : '自动回复已关闭')
+    } catch (error) {
+      event.target.checked = !event.target.checked
+      toast('切换失败：' + ((error && error.message) || error))
+    }
+  })
+
+  /* ── 界面设置持久化（localStorage） ── */
+  const UI_SETTINGS_KEY = 'dsh-comm.settings.v1'
+  let pendingSerialPort = ''
+  let uiSaveTimer = null
+
+  function collectUiSettings() {
+    return {
+      enc: state.enc,
+      hex: state.hex,
+      sendHex: state.sendHex,
+      ts: state.ts,
+      auto: state.auto,
+      paused: state.paused,
+      filter: state.filter,
+      eol: $('eolSel').value,
+      periodMs: $('periodMs').value,
+      periodic: $('periodic').checked,
+      autoOpen,
+      mode: state.mode,
+      cfg: {
+        serial: { port: $('serialPort').value, baud: $('serialBaud').value },
+        tcpServer: { host: $('tsHost').value, port: $('tsPort').value },
+        tcpClient: { host: $('tcHost').value, port: $('tcPort').value },
+        udp: {
+          localHost: $('udpLocalHost').value,
+          localPort: $('udpLocal').value,
+          host: $('udpHost').value,
+          port: $('udpPort').value,
+        },
+      },
+    }
+  }
+
+  function saveUiSettings() {
+    clearTimeout(uiSaveTimer)
+    uiSaveTimer = setTimeout(() => {
+      try { localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(collectUiSettings())) } catch { /* ignore */ }
+    }, 200)
+  }
+
+  function restoreUiSettings() {
+    let saved = null
+    try { saved = JSON.parse(localStorage.getItem(UI_SETTINGS_KEY) || 'null') } catch { saved = null }
+    if (!saved || typeof saved !== 'object') return
+    if (typeof saved.enc === 'string') state.enc = saved.enc
+    state.ts = saved.ts !== false
+    state.auto = saved.auto !== false
+    state.paused = Boolean(saved.paused)
+    state.filter = typeof saved.filter === 'string' ? saved.filter : ''
+    $('tTs').checked = state.ts
+    $('tAuto').checked = state.auto
+    $('tPause').checked = state.paused
+    $('filterInput').value = state.filter
+    if (typeof saved.eol === 'string') $('eolSel').value = saved.eol
+    if (typeof saved.periodMs === 'string') $('periodMs').value = saved.periodMs
+    $('periodic').checked = Boolean(saved.periodic)
+    $('eolLabel').textContent = $('eolSel').value
+    const cfg = saved.cfg || {}
+    if (cfg.tcpServer) {
+      if (cfg.tcpServer.host) $('tsHost').value = cfg.tcpServer.host
+      if (cfg.tcpServer.port) $('tsPort').value = cfg.tcpServer.port
+    }
+    if (cfg.tcpClient) {
+      if (cfg.tcpClient.host) $('tcHost').value = cfg.tcpClient.host
+      if (cfg.tcpClient.port) $('tcPort').value = cfg.tcpClient.port
+    }
+    if (cfg.udp) {
+      if (cfg.udp.localHost) $('udpLocalHost').value = cfg.udp.localHost
+      if (cfg.udp.localPort) $('udpLocal').value = cfg.udp.localPort
+      if (cfg.udp.host) $('udpHost').value = cfg.udp.host
+      if (cfg.udp.port) $('udpPort').value = cfg.udp.port
+    }
+    if (cfg.serial) {
+      if (cfg.serial.baud) { $('serialBaud').value = cfg.serial.baud; $('baudLabel').textContent = cfg.serial.baud }
+      pendingSerialPort = cfg.serial.port || ''
+    }
+    state.sendHex = Boolean(saved.sendHex)
+    setSendMode(state.sendHex)
+    for (const btn of $('sendSeg').children) btn.classList.toggle('active', (btn.dataset.mode === 'hex') === state.sendHex)
+    state.hex = Boolean(saved.hex)
+    for (const btn of $('modeSeg').children) btn.classList.toggle('active', (btn.dataset.mode === 'hex') === state.hex)
+    if (typeof saved.mode === 'string') state.mode = saved.mode
+    if (saved.autoOpen) { autoOpen = true; $('autoPanel').hidden = false }
+  }
+
+  // 任何控件变动都落盘（规则面板里的输入由「保存」按钮写入 Host，这里跳过）
+  document.addEventListener('change', saveUiSettings)
+  document.addEventListener('input', (event) => {
+    if (event.target.closest && event.target.closest('.auto-panel')) return
+    saveUiSettings()
+  })
+
   /* ── 初始化 ── */
   for (const [value, label] of ENCODINGS) {
     const opt = document.createElement('option')
@@ -1018,11 +1295,12 @@
     opt.textContent = label
     $('encSel').appendChild(opt)
   }
+  restoreUiSettings()
   $('encSel').value = state.enc
-  setSendMode(false)
-  applyMode('serial')
+  applyMode(state.mode || 'serial')
   updateRecordUI()
   poll()
+  if (autoOpen) { lastAutoLink = activeLinkId(); loadAutoRules() }
 })()
 </script>
 </body>
