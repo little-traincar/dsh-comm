@@ -29,3 +29,5 @@
         aiReplyMaxPerMinute: 30
         # 会话 list/create/rename/prompt 的超时（毫秒）
         aiReplyTimeoutMs: 15000
+        # 转发后多久没任何发送算一次"无响应"；连续两次自动解除绑定并重建专用会话
+        aiReplyLivenessMs: 30000

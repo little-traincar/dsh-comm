@@ -4,7 +4,7 @@ import net from 'node:net'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { apply } from 'file:///D:/deepseek/harness-work/thread/dsh-comm/lib/index.js'
+import { apply } from '../lib/index.js'
 
 // 隔离持久化目录，避免写到真实的 ~/.dsh（settings 在 apply 时才读取）
 process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'dsh-comm-settings-'))

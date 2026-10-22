@@ -114,6 +114,8 @@ comm_write { "link": "serial:COM3", "hex": "01 03 00 00 00 01",
 - **无规则 + 已启用**：方案 A —— 把消息转给 DSH 会话，由模型用 `comm_write` 回复。
   - 去抖合并：窗口内（默认 300 ms，UI 或 `/comm/api/auto` 的 `debounceMs` 可调）的多条消息合并成一次注入，重复内容会标注「重复 N 次」。
   - **默认专用会话**：首次自动回复时自动创建（并改名）`dsh-comm 自动回复` 会话，之后一直复用；会话 id 存在 `comm-settings.json` 的 `aiReplySessionId`，丢了/删了会自动重建。这样自动回复不会出现在你正在聊的主对话里，在左侧会话列表能看到它，也可以点进去看它回了什么。
+  - **失效自愈**：每次投递前先确认绑定会话还在（列表里不存在、或被删除/归档就清掉绑定重建）；投递报「会话不存在」时重建并重试一次；投递成功后若 `aiReplyLivenessMs`（默认 30s）内该链路一次发送都没有，记为一次无响应，连续两次自动解除绑定，下条消息重建。避免「会话没了还一直往死 id 投递、日志却写已转给」。
+  - `comm_list` 的 `aiReplySessionId` 显示当前绑定（`null` = 未绑定，下条消息会新建/重选）。
   - 想指定固定会话：插件 config 里设 `aiReplySession: '<会话 id>'`（优先于自动创建）。
   - 想退回旧行为（转给最近活跃的会话）：设 `aiReplyDedicatedSession: false`。
   - 防回环：自己刚发出的数据在 `aiReplyEchoSuppressMs`（默认 300ms）内原样回来（串口回显/TCP 回环/设备 echo）不会触发自动回复；两次转发至少间隔 `aiReplyCooldownMs`（默认 500ms）；60s 内超过 `aiReplyMaxPerMinute`（默认 30）次会暂停 30s 并记系统日志。会话 list/create/rename/prompt 都有超时，DSH 会话服务卡住也不会把自动回复永久挂住。
@@ -151,7 +153,10 @@ comm_write { "link": "serial:COM3", "hex": "01 03 00 00 00 01",
     aiReplyCooldownMs: 500     # 两次自动转发的最小间隔
     aiReplyMaxPerMinute: 30    # 60s 内自动转发上限，超过暂停 30s 防回环
     aiReplyTimeoutMs: 15000    # 会话 list/create/rename/prompt 的超时
+    aiReplyLivenessMs: 30000   # 转发后多久没发送算一次无响应；连续两次重建专用会话
 ```
+
+`comm_list` 的返回值现在统一经过无损 JSON 收敛（去掉 `undefined`、NaN/Infinity 转 null、Buffer 转 base64），不会再出现 `value is not lossless JSON`。
 
 ## 缓冲与压测
 

@@ -7,10 +7,10 @@
 // Run: node test/ai-dedicated.mjs
 import http from 'node:http'
 import net from 'node:net'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { apply } from '../lib/index.js'
+import { apply, losslessJson } from '../lib/index.js'
 
 const TOKEN = 'ai-dedicated-token'
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -230,5 +230,86 @@ console.log('create failure + no session -> no reply, sys log: OK')
 link.client.destroy()
 await host.api('/close', 'POST', { link: link.linkId })
 await new Promise((resolve) => host.server.close(resolve))
+
+/* 8. saved dedicated session vanished -> rebuilt automatically (no endless dead-id sends) */
+const ghostHome = mkdtempSync(join(tmpdir(), 'dsh-comm-ai-ghost-'))
+writeFileSync(join(ghostHome, 'comm-settings.json'), JSON.stringify({ version: 2, aiReplySessionId: 'ghost-1' }))
+const ghostSessions = new FakeSessions()
+host = await serve(boot(ghostHome, { sessions: ghostSessions }))
+link = await openLink(host.api)
+link.client.write('ghost message')
+await waitFor(() => ghostSessions.prompts.length === 1, 5000, 'ghost prompt')
+assert(ghostSessions.creates === 1, `rebuilt a new dedicated session (got ${ghostSessions.creates})`)
+assert(String(ghostSessions.prompts[0].sessionId) === 'sess-1', 'prompt goes to rebuilt session')
+assert(JSON.parse(readFileSync(join(ghostHome, 'comm-settings.json'), 'utf8')).aiReplySessionId === 'sess-1', 'rebuilt id persisted')
+console.log('saved session vanished -> rebuilt: OK')
+link.client.destroy()
+await host.api('/close', 'POST', { link: link.linkId })
+await new Promise((resolve) => host.server.close(resolve))
+
+/* 9a. session still listed but idle (archived/deleted): fast probe unbinds on the first miss */
+const idleHome = mkdtempSync(join(tmpdir(), 'dsh-comm-ai-idle-'))
+writeFileSync(join(idleHome, 'comm-settings.json'), JSON.stringify({ version: 2, aiReplySessionId: 'stale-9' }))
+const idleSessions = new FakeSessions()
+idleSessions.add({ sessionId: 'stale-9', blank: false, updatedAt: Date.now(), running: false })
+host = await serve(boot(idleHome, { sessions: idleSessions, config: { aiReplyLivenessMs: 2000 } }))
+link = await openLink(host.api)
+link.client.write('idle-1')
+await waitFor(() => idleSessions.prompts.length === 1, 5000, 'idle prompt 1')
+assert(String(idleSessions.prompts[0].sessionId) === 'stale-9', 'first send still targets the saved session')
+await waitFor(
+  async () => (await sysLogs(host.api, link.linkId)).some((text) => text.includes('已解除绑定')),
+  5000,
+  'fast unbind log',
+)
+const idleLogs = await sysLogs(host.api, link.linkId)
+assert(idleLogs.some((text) => text.includes('没有真正运行')), 'idle session reason logged: ' + JSON.stringify(idleLogs))
+assert(JSON.parse(readFileSync(join(idleHome, 'comm-settings.json'), 'utf8')).aiReplySessionId === '', 'idle binding cleared from settings')
+link.client.write('idle-2')
+await waitFor(() => idleSessions.prompts.length === 2, 5000, 'idle prompt 2')
+assert(idleSessions.creates === 1, `rebuilt once after idle unbind (got ${idleSessions.creates})`)
+assert(String(idleSessions.prompts[1].sessionId) === 'sess-1', 'next send goes to the rebuilt session')
+console.log('idle (archived) dedicated session -> unbound on first probe + rebuilt: OK')
+link.client.destroy()
+await host.api('/close', 'POST', { link: link.linkId })
+await new Promise((resolve) => host.server.close(resolve))
+
+/* 9b. session really runs but never sends: two slow liveness misses before unbinding */
+const busyHome = mkdtempSync(join(tmpdir(), 'dsh-comm-ai-busy-'))
+writeFileSync(join(busyHome, 'comm-settings.json'), JSON.stringify({ version: 2, aiReplySessionId: 'busy-9' }))
+const busySessions = new FakeSessions()
+busySessions.add({ sessionId: 'busy-9', blank: false, updatedAt: Date.now(), running: true })
+host = await serve(boot(busyHome, { sessions: busySessions, config: { aiReplyLivenessMs: 1500 } }))
+link = await openLink(host.api)
+link.client.write('busy-1')
+await waitFor(() => busySessions.prompts.length === 1, 5000, 'busy prompt 1')
+await waitFor(
+  async () => (await sysLogs(host.api, link.linkId)).some((text) => text.includes('没有回复')),
+  8000,
+  'first slow miss',
+)
+assert(String(JSON.parse(readFileSync(join(busyHome, 'comm-settings.json'), 'utf8')).aiReplySessionId) === 'busy-9', 'one miss keeps the binding')
+link.client.write('busy-2')
+await waitFor(() => busySessions.prompts.length === 2, 5000, 'busy prompt 2')
+await waitFor(
+  async () => (await sysLogs(host.api, link.linkId)).some((text) => text.includes('已解除绑定')),
+  8000,
+  'second slow miss unbinds',
+)
+assert(JSON.parse(readFileSync(join(busyHome, 'comm-settings.json'), 'utf8')).aiReplySessionId === '', 'binding cleared after two slow misses')
+console.log('running but silent session -> two misses then unbind: OK')
+link.client.destroy()
+await host.api('/close', 'POST', { link: link.linkId })
+await new Promise((resolve) => host.server.close(resolve))
+
+/* 10. tool output sanitizer: undefined / NaN / Date / Buffer must survive the lossless check */
+const sanitized = losslessJson({ a: undefined, b: Number.NaN, c: new Date(0), d: Buffer.from('hi'), e: [undefined, 1] })
+assert(!('a' in sanitized), 'undefined property dropped')
+assert(sanitized.b === null, 'NaN -> null')
+assert(sanitized.c === '1970-01-01T00:00:00.000Z', 'Date -> ISO string')
+assert(sanitized.d === 'aGk=', 'Buffer -> base64')
+assert(Array.isArray(sanitized.e) && sanitized.e[0] === null && sanitized.e[1] === 1, 'array holes -> null')
+assert(JSON.stringify(JSON.parse(JSON.stringify(sanitized))) === JSON.stringify(sanitized), 'round-trips losslessly')
+console.log('lossless JSON sanitizer: OK')
 
 console.log('\nAI DEDICATED SESSION TEST PASSED')
