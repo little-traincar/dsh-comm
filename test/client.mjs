@@ -19,32 +19,31 @@ const react = {
     return { type, props: { ...(props || {}), children } }
   },
   useRef() { return { current: null } },
+  useState(initial) {
+    const value = typeof initial === 'function' ? initial() : initial
+    return [value, () => {}]
+  },
   useEffect() { /* no-op in unit test */ },
 }
 const mod = spec.factory(() => react)
 assert.equal(mod.name, 'dsh-comm')
-assert.deepEqual(mod.inject, ['slots'])
+assert.deepEqual(mod.inject, ['slots', 'sidebarRightTabs'])
 
 const tabs = []
 const seats = []
 const ctx = {
-  inject(names, callback) {
-    assert.deepEqual(names, ['sidebarRightTabs'])
-    callback({
-      sidebarRightTabs: {
-        register(definition) {
-          tabs.push(definition)
-          return () => {}
-        },
-      },
-      slots: {
-        inject(name, factory) { return factory() },
-        register(definition, component) {
-          seats.push({ definition, component })
-          return () => {}
-        },
-      },
-    })
+  sidebarRightTabs: {
+    register(definition) {
+      tabs.push(definition)
+      return () => {}
+    },
+  },
+  slots: {
+    inject(_name, factory) { return factory() },
+    register(definition, component) {
+      seats.push({ definition, component })
+      return () => {}
+    },
   },
   effect(fn) { return fn() },
 }
@@ -54,6 +53,7 @@ mod.apply(ctx)
 assert.equal(tabs.length, 1, 'one tab type')
 assert.equal(tabs[0].id, 'dsh-comm')
 assert.equal(tabs[0].kind, 'dsh-comm')
+assert.equal(tabs[0].guide[0].id, 'dsh-comm:guide')
 assert.equal(tabs[0].guide[0].order, 40)
 assert.equal(tabs[0].guide[0].title(), '通信')
 

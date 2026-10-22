@@ -106,6 +106,26 @@
   .auto-row .grow{flex:1;min-width:60px}
   .auto-row .w60{width:60px;flex:none}
   .auto-empty{color:var(--dim);font-size:10.5px;padding:2px 0}
+  .select.serial{width:74px}
+  .select.serial.wide{width:96px}
+  .sig{display:inline-flex;align-items:center;gap:5px}
+  .sig[hidden]{display:none}
+  .sig-btn{height:19px;padding:0 6px;border:1px solid var(--line);background:#121A28;color:var(--dim);border-radius:5px;font-size:10px;font-family:var(--mono);line-height:17px}
+  .sig-btn:hover{background:#1C2433;color:var(--text)}
+  .sig-btn.active{border-color:#35508F;background:#16203A;color:#9FB4FF}
+  .sig-btn:disabled{opacity:.45;cursor:not-allowed}
+  .timer-stat{color:var(--cyan);font-size:10px;font-family:var(--mono);white-space:nowrap}
+  .trow{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);min-height:28px}
+  .trow .grow{flex:1}
+  .trow .mini-input{height:28px}
+  .tlabel{color:var(--dim);font-size:10.5px;white-space:nowrap}
+  .tradio{display:flex;align-items:center;gap:4px;font-size:11px;color:#C6D0E2;cursor:pointer;white-space:nowrap}
+  .tradio input{accent-color:#4D6BFE}
+  .tstep{display:grid;grid-template-columns:70px minmax(0,1fr) 64px 22px;gap:6px;align-items:center;margin-bottom:6px}
+  .tstep .mini-input{height:28px}
+  .tstep .qmode{height:28px;background:#0F1420;border:1px solid var(--line);border-radius:7px;color:#CBD5E6;font-size:11px;padding:0 3px;outline:none}
+  .tstep .tdel{border:0;background:transparent;color:#7A869C;font-size:15px;height:28px;border-radius:6px;padding:0}
+  .tstep .tdel:hover{background:#3A1F26;color:#FF9B9B}
   .send{flex:none;padding:9px 12px;display:flex;flex-direction:column;gap:7px;border-bottom:1px solid var(--line-soft)}
   .quick{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:22px}
   .quick-label{color:var(--dim);font-size:10.5px}
@@ -199,7 +219,26 @@
         <option>9600</option><option>57600</option><option>115200</option><option>460800</option><option>921600</option><option>2000000</option>
       </select>
     </label>
-    <span class="frame">8N1</span>
+    <label class="select serial" title="数据位">
+      <span id="dataBitsLabel">8</span>
+      <select id="serialDataBits"><option value="8">8</option><option value="7">7</option><option value="6">6</option><option value="5">5</option></select>
+    </label>
+    <label class="select serial" title="校验位">
+      <span id="parityLabel">N</span>
+      <select id="serialParity"><option value="none">N</option><option value="even">E</option><option value="odd">O</option><option value="mark">M</option><option value="space">S</option></select>
+    </label>
+    <label class="select serial" title="停止位">
+      <span id="stopBitsLabel">1</span>
+      <select id="serialStopBits"><option value="1">1</option><option value="1.5">1.5</option><option value="2">2</option></select>
+    </label>
+    <label class="select serial wide" title="流控">
+      <span id="flowLabel">无</span>
+      <select id="serialFlow"><option value="none">无</option><option value="rtscts">RTS-CTS</option><option value="xonxoff">XON-XOFF</option></select>
+    </label>
+    <label class="toggle" title="DTR"><input type="checkbox" id="serialDtr" checked><i></i>DTR</label>
+    <label class="toggle" title="RTS"><input type="checkbox" id="serialRts" checked><i></i>RTS</label>
+    <label class="toggle" title="断线自动重连"><input type="checkbox" id="serialAutoReconnect" checked><i></i>断线重连</label>
+    <span class="frame" id="serialFrame" title="当前串口帧格式">8N1</span>
     <button class="connect-btn" id="serialBtn">打开</button>
     <div class="hint" id="serialHint"></div>
   </div>
@@ -262,6 +301,11 @@
       <span title="没有规则时：把消息转给 DSH 会话，由模型用 comm_write 回复">无规则时</span>
       <span id="autoAiState" class="auto-empty" style="flex:none"></span>
     </div>
+    <div class="auto-row">
+      <span title="多条消息在窗口内合并成一次转发">防抖</span>
+      <input type="number" id="autoDebounce" min="0" max="5000" step="50" value="300" class="w60" title="毫秒（0-5000）">
+      <span>ms · 窗口内多条消息合并成一次转发</span>
+    </div>
     <div id="autoList"></div>
   </div>
 
@@ -285,6 +329,8 @@
       <label class="toggle"><input type="checkbox" id="periodic"><i></i>定时</label>
       <input class="mini-input interval" id="periodMs" value="1000">
       <span class="ms-label">ms</span>
+      <button class="ghost-btn" id="timerCfg" title="宿主级定时 / 序列发送（关掉面板也继续跑）">定时/序列…</button>
+      <span class="timer-stat" id="timerStat"></span>
     </div>
     <div class="send-row">
       <input class="input" id="sendInput" placeholder="输入要发送的数据…（回车发送）">
@@ -298,6 +344,12 @@
     <span>TX <b id="txBytes">0 B</b></span>
     <span class="sep">·</span>
     <span id="statCfg">—</span>
+    <span class="sig" id="serialSignals" hidden>
+      <button class="sig-btn" id="sigDtr" title="DTR 电平（点击切换）">DTR</button>
+      <button class="sig-btn" id="sigRts" title="RTS 电平（点击切换）">RTS</button>
+      <button class="sig-btn" id="sigPulseDtr" title="DTR 拉低 100ms 后恢复">复位DTR</button>
+      <button class="sig-btn" id="serialReconnect" title="重新打开串口">重连</button>
+    </span>
     <span class="sep">·</span>
     <span>编码 <b id="encStat">GBK</b></span>
     <span class="sep">·</span>
@@ -337,6 +389,61 @@
     </div>
   </div>
 
+  <div class="modal-backdrop" id="timerBackdrop">
+    <div class="modal">
+      <div class="modal-head">
+        <div>定时 / 序列 <span id="timerModeName"></span></div>
+        <button class="icon-btn" id="timerClose" title="关闭">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="trow">
+          <label class="tradio"><input type="radio" name="timerKind" id="timerKindPeriodic" value="periodic" checked> 周期</label>
+          <label class="tradio"><input type="radio" name="timerKind" id="timerKindSequence" value="sequence"> 序列</label>
+          <span class="grow"></span>
+          <label class="toggle"><input type="checkbox" id="timerAutostart"><i></i>保存后自动开始</label>
+        </div>
+
+        <div id="tkPeriodic">
+          <div class="trow">
+            <span class="tlabel">间隔</span>
+            <input class="mini-input interval" id="timerInterval" value="1000">
+            <span class="ms-label">ms</span>
+            <span class="tlabel">重复</span>
+            <input class="mini-input interval" id="timerRepeat" value="0">
+            <span class="ms-label">次（0=一直）</span>
+          </div>
+          <div class="trow">
+            <span class="tlabel">载荷</span>
+            <input class="mini-input grow" id="timerPayload" placeholder="要发送的内容">
+            <select class="qmode" id="timerPayloadMode"><option value="text">文本</option><option value="hex">HEX</option></select>
+          </div>
+        </div>
+
+        <div id="tkSequence" hidden>
+          <div class="trow">
+            <span class="tlabel">步骤（延迟 / 载荷 / 模式）</span>
+            <span class="grow"></span>
+            <button class="ghost-btn" id="timerStepAdd">＋ 步骤</button>
+          </div>
+          <div id="timerSteps"></div>
+          <div class="trow">
+            <label class="toggle"><input type="checkbox" id="timerLoop"><i></i>循环</label>
+            <span class="tlabel">重复</span>
+            <input class="mini-input interval" id="timerRepeatSeq" value="0">
+            <span class="ms-label">轮（0=一直）</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="ghost-btn" id="timerDelete" title="删除 Host 上保存的定时配置">删除保存</button>
+        <button class="ghost-btn" id="timerSave">仅保存</button>
+        <span class="grow"></span>
+        <button class="ghost-btn" id="timerStop">停止</button>
+        <button class="send-primary" id="timerStart" style="height:26px;font-size:11px">保存并启动</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast"></div>
   <div class="boot-error" id="bootError"></div>
 </div>
@@ -365,7 +472,9 @@
   let recording = false
   let recorded = []
   let toastTimer = null
-  let periodicTimer = null
+  let timerDraftSteps = []
+  let lastTimerSpec = null
+  let currentTimer = null
   let quickDraft = []
   let serialPorts = []
 
@@ -439,6 +548,90 @@
   }
   function activeLinkId() { return linkByMode[state.mode] }
   function activeLink() { const id = activeLinkId(); return id ? links[id] : undefined }
+
+  /* ── 串口帧格式 / 参数 ── */
+  const PARITY_LABEL = { none: 'N', even: 'E', odd: 'O', mark: 'M', space: 'S' }
+  const FLOW_LABEL = { none: '无', rtscts: 'RTS-CTS', xonxoff: 'XON-XOFF' }
+  let serialPrefsFromStorage = false
+
+  function setSerialBaud(value) {
+    const text = String(value)
+    const sel = $('serialBaud')
+    if (!Array.prototype.some.call(sel.options, (opt) => opt.value === text)) {
+      const opt = document.createElement('option')
+      opt.value = text
+      opt.textContent = text
+      sel.appendChild(opt)
+    }
+    sel.value = text
+    $('baudLabel').textContent = text
+  }
+
+  function serialFrameText() {
+    const bits = $('serialDataBits').value
+    const parity = PARITY_LABEL[$('serialParity').value] || 'N'
+    const stop = $('serialStopBits').value
+    const flow = $('serialFlow').value
+    return bits + parity + stop + (flow === 'rtscts' ? '+CTS' : flow === 'xonxoff' ? '+XON' : '')
+  }
+
+  function updateSerialFrame() {
+    $('dataBitsLabel').textContent = $('serialDataBits').value
+    $('parityLabel').textContent = PARITY_LABEL[$('serialParity').value] || 'N'
+    $('stopBitsLabel').textContent = $('serialStopBits').value
+    $('flowLabel').textContent = FLOW_LABEL[$('serialFlow').value] || '无'
+    $('serialFrame').textContent = serialFrameText()
+    if (!activeLink() && state.mode === 'serial') $('statCfg').textContent = linkConfigText()
+  }
+
+  function applySerialDefaults(defaults) {
+    if (!defaults || typeof defaults !== 'object') return
+    if (defaults.baudRate) setSerialBaud(defaults.baudRate)
+    if (defaults.dataBits !== undefined) $('serialDataBits').value = String(defaults.dataBits)
+    if (defaults.parity) $('serialParity').value = String(defaults.parity)
+    if (defaults.stopBits !== undefined) $('serialStopBits').value = String(defaults.stopBits)
+    if (defaults.flowControl) $('serialFlow').value = String(defaults.flowControl)
+    if (typeof defaults.dtr === 'boolean') $('serialDtr').checked = defaults.dtr
+    if (typeof defaults.rts === 'boolean') $('serialRts').checked = defaults.rts
+    if (typeof defaults.autoReconnect === 'boolean') $('serialAutoReconnect').checked = defaults.autoReconnect
+    updateSerialFrame()
+  }
+
+  /* ── 串口信号（DTR / RTS / 重连） ── */
+  function applySerialSignals(signals) {
+    if (!signals) return
+    $('sigDtr').classList.toggle('active', Boolean(signals.dtr))
+    $('sigRts').classList.toggle('active', Boolean(signals.rts))
+  }
+
+  function updateSerialSignals() {
+    const link = activeLink()
+    const open = Boolean(link && link.open)
+    const show = Boolean(link && link.type === 'serial' && open)
+    $('serialSignals').hidden = !show
+    const serial = link && link.serial ? link.serial : null
+    if (show && serial && serial.signals) applySerialSignals(serial.signals)
+    const reconnecting = Boolean(serial && serial.reconnecting)
+    $('serialReconnect').textContent = reconnecting ? '重连中…' : '重连'
+    $('serialReconnect').disabled = reconnecting
+    $('sigDtr').disabled = !show
+    $('sigRts').disabled = !show
+    $('sigPulseDtr').disabled = !show
+  }
+
+  async function serialAction(body, okText) {
+    const id = activeLinkId()
+    if (!id) { toast('请先打开串口'); return }
+    try {
+      const data = await api('/comm/api/serial', 'POST', { link: id, ...body })
+      if (data && data.link) links[data.link.id] = data.link
+      if (data && data.signals) applySerialSignals(data.signals)
+      updateSerialSignals()
+      if (okText) toast(okText)
+    } catch (error) {
+      toast('串口操作失败：' + ((error && error.message) || error))
+    }
+  }
 
   function toUI(entry) {
     return {
@@ -536,20 +729,31 @@
     $('rxBytes').textContent = fmtBytes(link ? link.rx : 0)
     $('txBytes').textContent = fmtBytes(link ? link.tx : 0)
     $('peerStat').textContent = '对端 ' + (link && link.peers ? link.peers.length : 0)
-    $('bufPct').textContent = Math.min(99, Math.round(((activeLinkId() && logs.get(activeLinkId()) || []).length / 2000) * 100)) + '%'
+    const backlogBytes = link && typeof link.backlogBytes === 'number' ? link.backlogBytes : 0
+    const dropped = link && typeof link.dropped === 'number' ? link.dropped : 0
+    $('bufPct').textContent = '缓冲 ' + fmtBytes(backlogBytes) + ' · 丢弃 ' + dropped
+    $('bufPct').title = link
+      ? ('待读队列 ' + (link.backlog || 0) + ' 条 / ' + backlogBytes + ' 字节；累计丢弃 ' + dropped + ' 条 / ' + (link.droppedBytes || 0) + ' 字节（上限由 Host 的 maxLogBytes 决定）')
+      : '未打开链路'
     $('statCfg').textContent = linkConfigText()
+    updateSerialSignals()
+    if (!link) applyTimerState(null)
+    else if (link.timer !== undefined) applyTimerState(link.timer)
   }
 
   function linkConfigText() {
     const link = activeLink()
     if (link) {
       const c = link.config || {}
-      if (link.type === 'serial') return '串口 ' + c.path + ' @ ' + c.baudRate
+      if (link.type === 'serial') {
+        const frame = String(c.dataBits || 8) + (PARITY_LABEL[c.parity] || 'N') + String(c.stopBits === undefined ? 1 : c.stopBits)
+        return '串口 ' + c.path + ' @ ' + c.baudRate + ' ' + frame
+      }
       if (link.type === 'tcpServer') return 'TCP ' + c.host + ':' + c.port
       if (link.type === 'tcpClient') return 'TCP → ' + c.host + ':' + c.port
       if (link.type === 'udp') return 'UDP ' + (c.localHost || '0.0.0.0') + ':' + c.localPort + ' → ' + c.remoteHost + ':' + c.remotePort
     }
-    if (state.mode === 'serial') return $('baudLabel').textContent + ' 8N1'
+    if (state.mode === 'serial') return $('serialBaud').value + ' ' + serialFrameText()
     if (state.mode === 'tcpServer') return 'TCP ' + ($('tsHost').value.trim() || '127.0.0.1') + ':' + $('tsPort').value
     if (state.mode === 'tcpClient') return 'TCP → ' + $('tcHost').value + ':' + $('tcPort').value
     return 'UDP ' + ($('udpLocalHost').value.trim() || '0.0.0.0') + ':' + $('udpLocal').value + ' → ' + $('udpHost').value + ':' + $('udpPort').value
@@ -625,7 +829,17 @@
   /* ── 打开 / 关闭 ── */
   function openOptions() {
     if (state.mode === 'serial') {
-      return { path: $('serialPort').value, baudRate: Number($('baudLabel').textContent) }
+      return {
+        path: $('serialPort').value,
+        baudRate: Number($('serialBaud').value) || 115200,
+        dataBits: Number($('serialDataBits').value) || 8,
+        parity: $('serialParity').value,
+        stopBits: Number($('serialStopBits').value) || 1,
+        flowControl: $('serialFlow').value,
+        dtr: $('serialDtr').checked,
+        rts: $('serialRts').checked,
+        autoReconnect: $('serialAutoReconnect').checked,
+      }
     }
     if (state.mode === 'tcpServer') {
       return { host: $('tsHost').value.trim() || '127.0.0.1', port: Number($('tsPort').value) }
@@ -690,6 +904,11 @@
       pendingSerialPort = ''
       const chosen = sel.selectedOptions[0]
       $('serialLabel').textContent = chosen ? chosen.textContent : '未发现串口'
+      const selected = serialPorts.find((port) => port.path === sel.value)
+      // 还原时 localStorage 里的用户参数优先；否则用该端口的设备默认值预填。
+      if (serialPrefsFromStorage) serialPrefsFromStorage = false
+      else if (selected && selected.defaults) applySerialDefaults(selected.defaults)
+      updateSerialFrame()
       $('serialHint').textContent = data.available ? '' : ('serialport 不可用：' + (data.error || '未安装') + '（网络功能不受影响）')
     } catch (error) {
       $('serialHint').textContent = '串口列表加载失败：' + error.message
@@ -885,17 +1104,233 @@
     if (event.key === 'Enter') { event.preventDefault(); send(false) }
   })
 
-  function stopPeriodic() {
-    if (periodicTimer) { clearInterval(periodicTimer); periodicTimer = null }
+  /* ── 宿主定时 / 序列（Host 侧执行，关掉面板也继续跑） ── */
+  function timerSpecFromUi() {
+    if ($('timerKindPeriodic').checked) {
+      const mode = $('timerPayloadMode').value
+      const raw = $('timerPayload').value
+      return {
+        kind: 'periodic',
+        intervalMs: Math.max(10, Number($('timerInterval').value) || 1000),
+        payload: mode === 'hex' ? { hex: raw } : { text: raw, encoding: state.enc },
+        repeat: Math.max(0, Number($('timerRepeat').value) || 0),
+      }
+    }
+    const steps = timerDraftSteps
+      .filter((step) => step.payload && step.payload.trim())
+      .map((step) => ({
+        delayMs: Math.max(0, Number(step.delayMs) || 0),
+        payload: step.mode === 'hex' ? { hex: step.payload } : { text: step.payload, encoding: state.enc },
+      }))
+    return {
+      kind: 'sequence',
+      steps,
+      loop: $('timerLoop').checked,
+      repeat: Math.max(0, Number($('timerRepeatSeq').value) || 0),
+    }
   }
-  function startPeriodicIfNeeded() {
-    stopPeriodic()
+
+  function syncTimerKind() {
+    const seq = $('timerKindSequence').checked
+    $('tkPeriodic').hidden = seq
+    $('tkSequence').hidden = !seq
+  }
+
+  function renderTimerSteps() {
+    const box = $('timerSteps')
+    box.innerHTML = ''
+    if (!timerDraftSteps.length) {
+      const empty = document.createElement('div')
+      empty.className = 'auto-empty'
+      empty.textContent = '还没有步骤，点右上角「＋ 步骤」添加。'
+      box.appendChild(empty)
+      return
+    }
+    timerDraftSteps.forEach((step, index) => {
+      const row = document.createElement('div')
+      row.className = 'tstep'
+      const delay = document.createElement('input')
+      delay.className = 'mini-input interval'
+      delay.type = 'number'
+      delay.min = '0'
+      delay.value = step.delayMs || '0'
+      delay.title = '延迟 ms'
+      delay.addEventListener('input', () => { timerDraftSteps[index].delayMs = delay.value })
+      const payload = document.createElement('input')
+      payload.className = 'mini-input'
+      payload.value = step.payload || ''
+      payload.placeholder = step.mode === 'hex' ? 'AA 55 01' : '内容'
+      payload.addEventListener('input', () => { timerDraftSteps[index].payload = payload.value })
+      const mode = document.createElement('select')
+      mode.className = 'qmode'
+      mode.innerHTML = '<option value="text">文本</option><option value="hex">HEX</option>'
+      mode.value = step.mode === 'hex' ? 'hex' : 'text'
+      mode.addEventListener('change', () => {
+        timerDraftSteps[index].mode = mode.value
+        payload.placeholder = mode.value === 'hex' ? 'AA 55 01' : '内容'
+      })
+      const del = document.createElement('button')
+      del.className = 'tdel'
+      del.textContent = '×'
+      del.title = '删除步骤'
+      del.addEventListener('click', () => { timerDraftSteps.splice(index, 1); renderTimerSteps() })
+      row.appendChild(delay); row.appendChild(payload); row.appendChild(mode); row.appendChild(del)
+      box.appendChild(row)
+    })
+  }
+
+  function applyTimerSpec(spec) {
+    if (!spec || typeof spec !== 'object') return
+    lastTimerSpec = spec
+    const seq = spec.kind === 'sequence'
+    $('timerKindPeriodic').checked = !seq
+    $('timerKindSequence').checked = seq
+    syncTimerKind()
+    if (seq) {
+      $('timerLoop').checked = Boolean(spec.loop)
+      $('timerRepeatSeq').value = String(spec.repeat || 0)
+      timerDraftSteps = (Array.isArray(spec.steps) ? spec.steps : []).map((step) => {
+        const payload = (step && step.payload) || {}
+        return {
+          delayMs: String((step && step.delayMs) || 0),
+          payload: payload.hex !== undefined ? payload.hex : (payload.text || ''),
+          mode: payload.hex !== undefined ? 'hex' : 'text',
+        }
+      })
+      renderTimerSteps()
+    } else {
+      $('timerInterval').value = String(spec.intervalMs || 1000)
+      $('timerRepeat').value = String(spec.repeat || 0)
+      const payload = spec.payload || {}
+      const isHex = payload.hex !== undefined
+      $('timerPayloadMode').value = isHex ? 'hex' : 'text'
+      $('timerPayload').value = isHex ? payload.hex : (payload.text || '')
+    }
+  }
+
+  function applyTimerState(timer) {
+    currentTimer = timer || null
+    const el = $('timerStat')
+    if (!el) return
+    if (currentTimer && currentTimer.running) {
+      const kind = currentTimer.kind || (lastTimerSpec && lastTimerSpec.kind) || 'periodic'
+      const err = currentTimer.lastError ? ' · ' + currentTimer.lastError : ''
+      if (kind === 'sequence') {
+        const round = currentTimer.round ? ' · 第 ' + currentTimer.round + ' 轮' : ''
+        el.textContent = '序列 · 已发 ' + (currentTimer.sent || 0) + round + err
+      } else {
+        const fallback = lastTimerSpec && lastTimerSpec.kind === 'periodic' ? lastTimerSpec.intervalMs : ''
+        const ms = currentTimer.intervalMs || fallback
+        el.textContent = '定时 ' + (ms ? ms + 'ms ' : '') + '· 已发 ' + (currentTimer.sent || 0) + err
+      }
+    } else if (currentTimer && currentTimer.lastError) {
+      el.textContent = '定时失败：' + currentTimer.lastError
+    } else {
+      el.textContent = lastTimerSpec ? '定时已停' : ''
+    }
+    const running = Boolean(currentTimer && currentTimer.running
+      && (currentTimer.kind || (lastTimerSpec && lastTimerSpec.kind)) === 'periodic')
+    if ($('periodic').checked !== running) $('periodic').checked = running
+  }
+
+  async function openTimerModal() {
+    const id = activeLinkId()
+    if (!id) { toast('请先打开链路'); return }
+    $('timerModeName').textContent = '· ' + MODE_LABEL[state.mode]
+    if (!$('timerPayload').value && $('sendInput').value) $('timerPayload').value = $('sendInput').value
+    try {
+      const data = await api('/comm/api/timer?link=' + encodeURIComponent(id))
+      applyTimerState(data.timer)
+      if (data.saved && data.saved.spec) {
+        applyTimerSpec(data.saved.spec)
+        $('timerAutostart').checked = Boolean(data.saved.autostart)
+      }
+    } catch (error) {
+      toast('读取定时配置失败：' + ((error && error.message) || error))
+    }
+    $('timerBackdrop').classList.add('show')
+  }
+  function closeTimerModal() { $('timerBackdrop').classList.remove('show') }
+
+  async function timerPost(body, okText) {
+    const id = activeLinkId()
+    if (!id) { toast('请先打开链路'); return null }
+    try {
+      const data = await api('/comm/api/timer', 'POST', { link: id, ...body })
+      if (data && data.timer !== undefined) applyTimerState(data.timer)
+      if (okText) toast(okText)
+      return data
+    } catch (error) {
+      toast('定时操作失败：' + ((error && error.message) || error))
+      return null
+    }
+  }
+
+  function periodicSpecFromInput() {
+    const raw = $('sendInput').value
+    if (!raw) return null
+    const payload = state.sendHex ? { hex: raw } : { text: raw + eolText(), encoding: state.enc }
+    return { kind: 'periodic', intervalMs: Math.max(10, Number($('periodMs').value) || 1000), payload, repeat: 0 }
+  }
+
+  async function startPeriodicFromInput() {
+    const id = activeLinkId()
+    if (!id) { $('periodic').checked = false; toast('请先打开链路'); return }
+    const spec = periodicSpecFromInput()
+    if (!spec) { $('periodic').checked = false; toast('先在输入框填入要定时发送的内容'); return }
+    lastTimerSpec = spec
+    await timerPost({ action: 'start', spec }, '宿主定时发送已启动')
+  }
+
+  async function stopTimer() {
+    await timerPost({ action: 'stop' }, '定时已停止')
+    lastTimerSpec = null
+    applyTimerState(null)
+  }
+
+  $('periodic').addEventListener('change', async (event) => {
+    if (event.target.checked) await startPeriodicFromInput()
+    else await stopTimer()
+  })
+  $('periodMs').addEventListener('change', async () => {
     if (!$('periodic').checked) return
-    const ms = Math.max(100, Number($('periodMs').value) || 1000)
-    periodicTimer = setInterval(() => send(true), ms)
-  }
-  $('periodic').addEventListener('change', startPeriodicIfNeeded)
-  $('periodMs').addEventListener('change', () => { if ($('periodic').checked) startPeriodicIfNeeded() })
+    await timerPost({ action: 'stop' })
+    await startPeriodicFromInput()
+  })
+  $('timerCfg').addEventListener('click', openTimerModal)
+  $('timerClose').addEventListener('click', closeTimerModal)
+  $('timerBackdrop').addEventListener('click', (event) => { if (event.target === $('timerBackdrop')) closeTimerModal() })
+  $('timerKindPeriodic').addEventListener('change', syncTimerKind)
+  $('timerKindSequence').addEventListener('change', syncTimerKind)
+  $('timerStepAdd').addEventListener('click', () => {
+    timerDraftSteps.push({ delayMs: '0', payload: '', mode: 'text' })
+    renderTimerSteps()
+  })
+  $('timerStart').addEventListener('click', async () => {
+    const spec = timerSpecFromUi()
+    if (spec.kind === 'periodic' && !spec.payload.text && spec.payload.hex === undefined) { toast('请填写定时载荷'); return }
+    if (spec.kind === 'sequence' && !spec.steps.length) { toast('请至少添加一个序列步骤'); return }
+    lastTimerSpec = spec
+    const data = await timerPost({ action: 'start', spec, autostart: $('timerAutostart').checked }, '定时已启动')
+    if (data) closeTimerModal()
+  })
+  $('timerStop').addEventListener('click', async () => {
+    await timerPost({ action: 'stop' }, '定时已停止')
+    lastTimerSpec = null
+    applyTimerState(null)
+  })
+  $('timerSave').addEventListener('click', async () => {
+    const spec = timerSpecFromUi()
+    lastTimerSpec = spec
+    await timerPost({ action: 'save', spec, autostart: $('timerAutostart').checked }, '定时配置已保存')
+  })
+  $('timerDelete').addEventListener('click', async () => {
+    await timerPost({ action: 'delete' }, '已删除保存的定时配置')
+    lastTimerSpec = null
+    applyTimerState(null)
+    closeTimerModal()
+  })
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeTimerModal() })
 
   /* ── 日志导出 / 录制 ── */
   function pad2(n) { return String(n).padStart(2, '0') }
@@ -1041,10 +1476,32 @@
   $('serialPort').addEventListener('change', () => {
     const opt = $('serialPort').selectedOptions[0]
     $('serialLabel').textContent = opt ? opt.textContent : '选择串口…'
+    const info = serialPorts.find((port) => port.path === $('serialPort').value)
+    if (info && info.defaults) applySerialDefaults(info.defaults)
+    updateSerialFrame()
+    saveUiSettings()
   })
   $('serialBaud').addEventListener('change', () => {
     $('baudLabel').textContent = $('serialBaud').value
     updateCounters()
+  })
+  for (const id of ['serialDataBits', 'serialParity', 'serialStopBits', 'serialFlow']) {
+    $(id).addEventListener('change', updateSerialFrame)
+  }
+  for (const id of ['serialDtr', 'serialRts', 'serialAutoReconnect']) {
+    $(id).addEventListener('change', updateSerialFrame)
+  }
+  $('sigDtr').addEventListener('click', () => {
+    serialAction({ action: 'set', dtr: !$('sigDtr').classList.contains('active') }, 'DTR 已切换')
+  })
+  $('sigRts').addEventListener('click', () => {
+    serialAction({ action: 'set', rts: !$('sigRts').classList.contains('active') }, 'RTS 已切换')
+  })
+  $('sigPulseDtr').addEventListener('click', () => {
+    serialAction({ action: 'pulse', line: 'dtr', ms: 100 }, 'DTR 已复位')
+  })
+  $('serialReconnect').addEventListener('click', () => {
+    serialAction({ action: 'reconnect' }, '已请求重连')
   })
   $('eolSel').addEventListener('change', () => { $('eolLabel').textContent = $('eolSel').value })
   $('saveBtn').textContent = '导出日志'
@@ -1142,6 +1599,12 @@
     })
   }
 
+  function autoDebounceValue() {
+    const n = Number($('autoDebounce').value)
+    if (!Number.isFinite(n)) return 300
+    return Math.max(0, Math.min(5000, Math.round(n)))
+  }
+
   async function loadAutoRules() {
     const id = activeLinkId()
     if (!id) { autoRules = []; $('autoEnable').checked = false; renderAutoRules(); return }
@@ -1149,9 +1612,21 @@
       const data = await api('/comm/api/rules?link=' + encodeURIComponent(id))
       autoRules = Array.isArray(data.rules) ? data.rules : []
       $('autoEnable').checked = Boolean(data.enabled)
-      $('autoAiState').textContent = data.aiSession
-        ? '→ 转给 DSH 会话，由模型用 comm_write 回复'
-        : '→ 当前没有可用的 DSH 会话，不会回复'
+      const debounce = Number(data.debounceMs)
+      $('autoDebounce').value = String(Number.isFinite(debounce) ? debounce : 300)
+      const aiId = String(data.aiSessionId || '')
+      const title = String(data.aiSessionTitle || 'dsh-comm 自动回复')
+      if (!data.aiSession) {
+        $('autoAiState').textContent = '→ 当前没有可用 DSH 会话，不会回复'
+      } else if (aiId && data.aiDedicated !== false) {
+        $('autoAiState').textContent = '→ 专用会话「' + title + '」' + aiId + '（不再注入主对话）'
+      } else if (aiId) {
+        $('autoAiState').textContent = '→ 转给指定会话 ' + aiId + '（不再注入主对话）'
+      } else if (data.aiDedicated !== false) {
+        $('autoAiState').textContent = '→ 首次自动回复时自动创建专用会话「' + title + '」，不打扰主对话'
+      } else {
+        $('autoAiState').textContent = '→ 转给最近活跃的 DSH 会话（可能注入主对话）'
+      }
     } catch (error) {
       autoRules = []
       toast('读取自动回复规则失败：' + ((error && error.message) || error))
@@ -1166,6 +1641,10 @@
       const data = await api('/comm/api/rules', 'POST', { link: id, rules: autoRules })
       autoRules = Array.isArray(data.rules) ? data.rules : []
       renderAutoRules()
+      // 防抖窗口与开关一起落到 /auto
+      try {
+        await api('/comm/api/auto', 'POST', { link: id, enabled: $('autoEnable').checked, debounceMs: autoDebounceValue() })
+      } catch { /* 老 Host 不支持 debounceMs 时忽略 */ }
       toast('自动回复已保存：' + autoRules.length + ' 条')
     } catch (error) {
       toast('保存失败：' + ((error && error.message) || error))
@@ -1187,12 +1666,29 @@
     const id = activeLinkId()
     if (!id) { event.target.checked = false; toast('先打开一条链路'); return }
     try {
-      const data = await api('/comm/api/auto', 'POST', { link: id, enabled: event.target.checked })
+      const data = await api('/comm/api/auto', 'POST', {
+        link: id,
+        enabled: event.target.checked,
+        debounceMs: autoDebounceValue(),
+      })
       event.target.checked = Boolean(data.enabled)
       toast(data.enabled ? '自动回复已启用' : '自动回复已关闭')
     } catch (error) {
       event.target.checked = !event.target.checked
       toast('切换失败：' + ((error && error.message) || error))
+    }
+  })
+  $('autoDebounce').addEventListener('change', async () => {
+    const value = autoDebounceValue()
+    $('autoDebounce').value = String(value)
+    saveUiSettings()
+    const id = activeLinkId()
+    if (!id) return
+    try {
+      await api('/comm/api/auto', 'POST', { link: id, enabled: $('autoEnable').checked, debounceMs: value })
+      toast('防抖窗口已设为 ' + value + 'ms')
+    } catch (error) {
+      toast('保存防抖失败：' + ((error && error.message) || error))
     }
   })
 
@@ -1213,10 +1709,21 @@
       eol: $('eolSel').value,
       periodMs: $('periodMs').value,
       periodic: $('periodic').checked,
+      autoDebounce: $('autoDebounce').value,
       autoOpen,
       mode: state.mode,
       cfg: {
-        serial: { port: $('serialPort').value, baud: $('serialBaud').value },
+        serial: {
+          port: $('serialPort').value,
+          baud: $('serialBaud').value,
+          dataBits: $('serialDataBits').value,
+          parity: $('serialParity').value,
+          stopBits: $('serialStopBits').value,
+          flow: $('serialFlow').value,
+          dtr: $('serialDtr').checked,
+          rts: $('serialRts').checked,
+          autoReconnect: $('serialAutoReconnect').checked,
+        },
         tcpServer: { host: $('tsHost').value, port: $('tsPort').value },
         tcpClient: { host: $('tcHost').value, port: $('tcPort').value },
         udp: {
@@ -1251,6 +1758,7 @@
     $('filterInput').value = state.filter
     if (typeof saved.eol === 'string') $('eolSel').value = saved.eol
     if (typeof saved.periodMs === 'string') $('periodMs').value = saved.periodMs
+    if (saved.autoDebounce !== undefined) $('autoDebounce').value = String(saved.autoDebounce)
     $('periodic').checked = Boolean(saved.periodic)
     $('eolLabel').textContent = $('eolSel').value
     const cfg = saved.cfg || {}
@@ -1269,8 +1777,19 @@
       if (cfg.udp.port) $('udpPort').value = cfg.udp.port
     }
     if (cfg.serial) {
-      if (cfg.serial.baud) { $('serialBaud').value = cfg.serial.baud; $('baudLabel').textContent = cfg.serial.baud }
-      pendingSerialPort = cfg.serial.port || ''
+      const s = cfg.serial
+      if (s.baud) setSerialBaud(s.baud)
+      if (s.dataBits) $('serialDataBits').value = String(s.dataBits)
+      if (s.parity) $('serialParity').value = String(s.parity)
+      if (s.stopBits) $('serialStopBits').value = String(s.stopBits)
+      if (s.flow) $('serialFlow').value = String(s.flow)
+      if (typeof s.dtr === 'boolean') $('serialDtr').checked = s.dtr
+      if (typeof s.rts === 'boolean') $('serialRts').checked = s.rts
+      if (typeof s.autoReconnect === 'boolean') $('serialAutoReconnect').checked = s.autoReconnect
+      pendingSerialPort = s.port || ''
+      // localStorage 里的用户参数优先于端口默认值
+      serialPrefsFromStorage = true
+      updateSerialFrame()
     }
     state.sendHex = Boolean(saved.sendHex)
     setSendMode(state.sendHex)
@@ -1297,6 +1816,7 @@
   }
   restoreUiSettings()
   $('encSel').value = state.enc
+  updateSerialFrame()
   applyMode(state.mode || 'serial')
   updateRecordUI()
   poll()

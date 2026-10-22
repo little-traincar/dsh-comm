@@ -12,5 +12,20 @@
       config:
         maxLogEntries: 2000
         maxReadEntries: 200
+        # 每条链路日志的原始字节上限（默认 4 MiB），超出丢最旧并计入 dropped
+        maxLogBytes: 4194304
         # 留空则每次启动随机生成；调试期可固定一个值
         uiToken: ''
+        # 无规则自动回复：转给哪个 DSH 会话；留空 = 自动创建/复用专用会话
+        aiReplySession: ''
+        # 默认 true：自动创建「dsh-comm 自动回复」专用会话，不注入主对话；
+        # false：退回最近活跃会话
+        aiReplyDedicatedSession: true
+        # 无规则自动回复的合并窗口（毫秒）
+        aiReplyDebounceMs: 300
+        # 防回环：自己发出的数据在窗口内原样回来视为回显；两次转发最小间隔；每分钟上限
+        aiReplyEchoSuppressMs: 300
+        aiReplyCooldownMs: 500
+        aiReplyMaxPerMinute: 30
+        # 会话 list/create/rename/prompt 的超时（毫秒）
+        aiReplyTimeoutMs: 15000
