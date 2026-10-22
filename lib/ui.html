@@ -173,7 +173,7 @@
 
   <div class="tabs" id="modeTabs">
     <button class="active" data-mode="serial">串口</button>
-    <button data-mode="tcpServer">TCP 服务</button>
+    <button data-mode="tcpServer">TCP 服务端</button>
     <button data-mode="tcpClient">TCP 客户端</button>
     <button data-mode="udp">UDP</button>
   </div>
@@ -195,10 +195,8 @@
   </div>
 
   <div class="cfg" id="cfgTcpServer">
-    <label class="select ip" title="监听地址（0.0.0.0 = 允许局域网访问）">
-      <span id="tsHostLabel">127.0.0.1</span>
-      <select id="tsHost"><option>127.0.0.1</option><option>0.0.0.0</option></select>
-    </label>
+    <input class="mini-input host" id="tsHost" value="127.0.0.1" spellcheck="false"
+           title="监听地址：127.0.0.1 仅本机，0.0.0.0 所有网卡，也可填具体网卡 IP，如 192.168.1.10">
     <span class="colon">:</span>
     <input class="mini-input port" id="tsPort" value="8080">
     <button class="connect-btn" id="tsBtn">监听</button>
@@ -213,6 +211,9 @@
 
   <div class="cfg" id="cfgUdp">
     <span class="colon">本地</span>
+    <input class="mini-input host" id="udpLocalHost" value="0.0.0.0" spellcheck="false"
+           title="本地绑定地址：0.0.0.0 所有网卡，127.0.0.1 仅本机，也可填指定网卡 IP，如 192.168.1.10">
+    <span class="colon">:</span>
     <input class="mini-input port" id="udpLocal" value="8081">
     <span class="colon">→</span>
     <input class="mini-input host" id="udpHost" value="192.168.1.20">
@@ -233,7 +234,7 @@
     <label class="toggle"><input type="checkbox" id="tTs" checked><i></i>时间戳</label>
     <label class="toggle"><input type="checkbox" id="tAuto" checked><i></i>自动滚动</label>
     <label class="toggle"><input type="checkbox" id="tPause"><i></i>暂停</label>
-    <button class="ghost-btn" id="clearBtn">清屏</button>
+    <button class="ghost-btn" id="clearBtn" title="清空当前链路的日志（Host 侧一并清除，重进面板不会回来）">清空日志</button>
     <input class="filter" id="filterInput" placeholder="过滤…">
   </div>
 
@@ -518,12 +519,12 @@
       if (link.type === 'serial') return '串口 ' + c.path + ' @ ' + c.baudRate
       if (link.type === 'tcpServer') return 'TCP ' + c.host + ':' + c.port
       if (link.type === 'tcpClient') return 'TCP → ' + c.host + ':' + c.port
-      if (link.type === 'udp') return 'UDP ' + c.localPort + ' → ' + c.remoteHost + ':' + c.remotePort
+      if (link.type === 'udp') return 'UDP ' + (c.localHost || '0.0.0.0') + ':' + c.localPort + ' → ' + c.remoteHost + ':' + c.remotePort
     }
     if (state.mode === 'serial') return $('baudLabel').textContent + ' 8N1'
-    if (state.mode === 'tcpServer') return 'TCP ' + $('tsHostLabel').textContent + ':' + $('tsPort').value
+    if (state.mode === 'tcpServer') return 'TCP ' + ($('tsHost').value.trim() || '127.0.0.1') + ':' + $('tsPort').value
     if (state.mode === 'tcpClient') return 'TCP → ' + $('tcHost').value + ':' + $('tcPort').value
-    return 'UDP ' + $('udpLocal').value + ' → ' + $('udpHost').value + ':' + $('udpPort').value
+    return 'UDP ' + ($('udpLocalHost').value.trim() || '0.0.0.0') + ':' + $('udpLocal').value + ' → ' + $('udpHost').value + ':' + $('udpPort').value
   }
 
   /* ── 状态 / 头部 ── */
@@ -595,12 +596,13 @@
       return { path: $('serialPort').value, baudRate: Number($('baudLabel').textContent) }
     }
     if (state.mode === 'tcpServer') {
-      return { host: $('tsHostLabel').textContent, port: Number($('tsPort').value) }
+      return { host: $('tsHost').value.trim() || '127.0.0.1', port: Number($('tsPort').value) }
     }
     if (state.mode === 'tcpClient') {
       return { host: $('tcHost').value.trim(), port: Number($('tcPort').value) }
     }
     return {
+      localHost: $('udpLocalHost').value.trim() || '0.0.0.0',
       localPort: Number($('udpLocal').value),
       remoteHost: $('udpHost').value.trim(),
       remotePort: Number($('udpPort').value),
@@ -975,10 +977,17 @@
   $('tTs').addEventListener('change', (event) => { state.ts = event.target.checked; renderLog() })
   $('tAuto').addEventListener('change', (event) => { state.auto = event.target.checked; if (event.target.checked) { followTail = true; renderLog() } })
   $('tPause').addEventListener('change', (event) => { state.paused = event.target.checked })
-  $('clearBtn').addEventListener('click', () => {
+  $('clearBtn').addEventListener('click', async () => {
     const id = activeLinkId()
     if (id) logs.set(id, [])
     renderLog()
+    if (!id) return
+    // 只清界面会被下一次拉取/重进面板还原，所以连 Host 的日志一起清。
+    try {
+      await api('/comm/api/clear', 'POST', { link: id })
+    } catch (error) {
+      toast('清空 Host 日志失败：' + ((error && error.message) || error))
+    }
   })
   $('filterInput').addEventListener('input', (event) => {
     state.filter = event.target.value.trim().toLowerCase()
@@ -998,7 +1007,6 @@
     $('baudLabel').textContent = $('serialBaud').value
     updateCounters()
   })
-  $('tsHost').addEventListener('change', () => { $('tsHostLabel').textContent = $('tsHost').value })
   $('eolSel').addEventListener('change', () => { $('eolLabel').textContent = $('eolSel').value })
   $('saveBtn').textContent = '导出日志'
 

@@ -88,6 +88,15 @@ try {
   await waitFor(() => peerGot.includes('world'), 6000, 'peer got world')
   console.log('UI send OK, peer got:', peerGot)
 
+  // 清空日志：界面和 Host 两侧都要清掉，重进面板不能又回来
+  doc.querySelector('#clearBtn').click()
+  await waitFor(() => !doc.querySelector('#log').textContent.includes('hello-ui'), 6000, 'UI log cleared')
+  await waitFor(async () => {
+    const poll = await (await fetch(`${BASE}/comm/api/poll?since=0&token=${TOKEN}`)).json()
+    return Array.isArray(poll.entries) && poll.entries.length === 0
+  }, 6000, 'Host log cleared')
+  console.log('UI clear log OK')
+
   doc.querySelector('#tsBtn').click()
   await waitFor(async () => {
     const state = await (await fetch(`${BASE}/comm/api/state?token=${TOKEN}`)).json()

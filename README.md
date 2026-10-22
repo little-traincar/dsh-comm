@@ -1,21 +1,21 @@
 # dsh-comm
 
-DSH 的内嵌通信调试台：**串口 / TCP 服务端 / TCP 客户端 / UDP** 四模式，文本与 HEX 收发、编码切换、快捷输入（用户可自定义）、日志录制与导出。UI 以右栏 tab 的形式嵌在 DSH 里，不是独立网页。
+DSH 的内嵌通信调试台：**串口 / TCP 服务端 / TCP 客户端 / UDP** 四模式，文本与 HEX 收发、编码切换、快捷输入、日志录制与导出。UI 以右栏 tab 的形式嵌在 DSH 里，不是独立网页。
 
 ## 架构
 
 ```
-dsh-comm（一个包，两个半边）
+dsh-comm
 ├─ lib/index.js          Host 半边
 │   ├─ LinkManager       串口 / TCP Server / TCP Client / UDP
 │   ├─ 模型工具          comm_list/open/close/read/write/peers/tail
-│   ├─ /comm/ui          UI 页面（带进程 token）
+│   ├─ /comm/ui          UI 页面
 │   ├─ /comm/api/*       轮询 / 打开 / 关闭 / 发送 / 端口
 │   └─ index 注入        window.__DSH_COMM__ = { base, token }
-├─ lib/serial-windows.js Windows 串口桥（常驻 PowerShell，不依赖原生模块）
+├─ lib/serial-windows.js Windows 串口桥
 ├─ lib/serial-host.ps1   PowerShell 端 JSON 行协议
-├─ lib/client.js         Client 半边（右栏 tab + iframe）
-└─ lib/ui.html           控制台页面（普通 HTML/CSS/JS，轮询 Host API）
+├─ lib/client.js         Client 半边
+└─ lib/ui.html           控制台页面
 ```
 
 - 链路状态全部在 Host，关闭面板/切换 tab/刷新页面不会断链；
