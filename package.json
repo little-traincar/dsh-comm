@@ -1,6 +1,6 @@
 {
   "name": "dsh-comm",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "DSH 通信调试台：串口 / TCP 服务端 / TCP 客户端 / UDP，文本/HEX、编码、快捷发送、日志录制导出，内嵌于 DSH 右栏。",
   "license": "MIT",
   "type": "module",
