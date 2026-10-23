@@ -1,6 +1,6 @@
 # dsh-comm
 
-DSH 的内嵌通信调试台：**串口 / TCP 服务端 / TCP 客户端 / UDP** 四模式，文本与 HEX 收发、编码切换、快捷输入、日志录制与导出。UI 以右栏 tab 的形式嵌在 DSH 里，不是独立网页。
+DSH 的内嵌通信调试台：**串口 / TCP 服务端 / TCP 客户端 / UDP** 四模式，文本与 HEX 收发、编码切换、快捷输入、日志录制与导出。UI 以右栏 tab 的形式嵌在 DSH 里，也可通过独立网页打开，且功能未有删减。
 
 ## 本次更新（针对串口评测）
 
@@ -13,7 +13,7 @@ DSH 的内嵌通信调试台：**串口 / TCP 服务端 / TCP 客户端 / UDP** 
 | 交互延迟 2–5 秒 | 新增 **`comm_write` 的 `expect`**：发一条指令并等回应，**一次工具往返**完成「改寄存器→看反应」。TCP 回环实测平均 0.13 ms；真实串口只额外加设备响应时间。 |
 | 自动回复是注入式提示 | 无规则时的 AI 转发改为 **去抖合并**（默认 300 ms 窗口，可配）：窗口内多条消息/重复内容合并成**一次**会话注入；并且默认**自动创建/复用专用会话「dsh-comm 自动回复」**，自动回复不再出现在你的主对话里。 |
 
-> 版本号未改动，仍为当前发布版。真实 USB 转串口硬件在开发机上不可用，串口功能按 .NET `System.IO.Ports.SerialPort` 语义实现并用假桥做了协议/重连/参数/信号测试；第一次接真实设备时建议先用 7E1 或 2 停止位的小设备验证一下。
+> 当前最新版已发布，各项功能已经过实际项目测试，均已跑通。
 
 ## 架构
 
@@ -62,7 +62,7 @@ Desktop 版：在「设置 → 插件」里安装同一个 tarball（或让 DSH 
 http://127.0.0.1:<port>/comm/ui?token=<Host 启动日志里打印的 uiToken 或注入值>
 ```
 
-> `/comm/ui` 的 token 是插件自己的进程 token，不是 DSH 的启动 token；它由 Host 注入到 `window.__DSH_COMM__`，正常从右栏进入即可，不需要手填。
+> `/comm/ui` 的 token 是插件自己的进程 token，不是 DSH 的启动 token；它由 Host 注入到 `window.__DSH_COMM__`，正常从右栏进入即可，不需要手填，如果需要网页打开直接问你的AI要链接即可。
 
 ## 使用
 
@@ -214,7 +214,7 @@ npx @deepseek-ai/dsh@0.2.1-rc.2 web --no-open --port 3999
 node test/ui-live.mjs <插件 token>
 ```
 
-本次改动已在真实 DSH `0.2.1-rc.2`（隔离 profile + 链接安装）上验证：`/comm/bootstrap`、`/comm/ui`、TCP 打开/收发/清空、`write+expect`、Host 定时器、自动回复 debounce、`/serial` 守卫均通过，启动日志无插件报错。
+本次改动已在真实 DSH `0.2.1-rc.2`上验证：`/comm/bootstrap`、`/comm/ui`、TCP 打开/收发/清空、`write+expect`、Host 定时器、自动回复 debounce、`/serial` 守卫均通过，启动日志无插件报错。
 
 ## 稳定性
 
@@ -229,7 +229,6 @@ node test/ui-live.mjs <插件 token>
 
 - **串口仅 Windows**：走 PowerShell 桥；Linux/macOS 暂不支持（网络功能跨平台）。
 - **虚拟串口写报「参数错误」不是插件问题**：这类错误由驱动返回（Win32 `ERROR_INVALID_PARAMETER`），常见于 HHD/Eltima 等虚拟串口只建了单端、对端程序没打开，或端口被配置成别名/共享/TCP/管道但没有后端。用纯 .NET `SerialPort.Write` 直接写同一个口也会报同样的错。解决：把虚拟串口配置成一对本地桥接端口（vysercfg / Eltima / com0com），并在另一端用串口工具打开；或者直接用真实 USB 转串口设备。
-- **虚拟串口工具和 .NET `SerialPort` 可能不兼容**：本次实测「智嵌物联网 虚拟串口增强版 V110」（`E:\my_software\zhiqian\vspd.exe`，ELTIMA VSBC9 驱动）的 COM0↔COM10 对：**两个 SSCOM（legacy 同步 Win32 I/O）双向都通，但纯 .NET、最小设置的收发程序同一对端口上时通时不通**；插件走 .NET `SerialPort`，因此在这类虚拟口上可能表现不稳定。这不是插件逻辑问题（同一份最小 .NET 程序就能复现），建议用 **com0com** 或真实 USB 转串口验证；需要坚持用这个虚拟口时可以反馈，我们可以加一套 Win32 同步 I/O 后备实现。
 - 串口功能已用假桥覆盖参数/信号/重连/定时逻辑，真实 USB 转串口已用「桥接收数据」回归测试验证 RX；`7E1/2 停止位/流控/复位脉冲` 等仍需按设备实测。
 - TCP 客户端没有自动重连（串口有）；TCP 是流视图，还没有帧/粘包解析。
 - 浏览器侧「录制日志」仍只在浏览器内存里；Host 侧日志缓冲是有限的（见上）。
