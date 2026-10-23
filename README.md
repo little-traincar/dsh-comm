@@ -37,6 +37,10 @@ dsh-comm
 - 串口接收不用 `DataReceived` 事件（跨线程且按 15 ms 轮询会丢字节），改成主循环每 5 ms `BytesToRead` + `Read(byte[])`，字节直读，二进制/GBK 不会被编码破坏。
 - UI iframe 与 DSH 页面同源，Cookie 自动带上；`/comm/*` 额外要求进程 token。
 
+## 插件界面
+
+![Alt text](<屏幕截图 2026-10-23 162554.png>)
+
 ## 安装
 
 前提：DSH `0.2.1-rc.2`（`0.2.0-rc.2` 也兼容）。

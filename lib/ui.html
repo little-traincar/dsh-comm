@@ -643,7 +643,7 @@
   /* ── 日志渲染 ── */
   function hexLine(item) {
     if (item.dir === 'tx') return '> ' + hexOf(item.bytes)
-    return item.q.toString(16).toUpperCase().padStart(6, '0') + '  ' + hexOf(item.bytes)
+    return hexOf(item.bytes)
   }
   function makeLine(item) {
     const decoded = decodeBytes(item.bytes, state.enc)
