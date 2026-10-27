@@ -156,6 +156,30 @@ const missed = await api('/comm/api/write', 'POST', {
 assert(missed.matched === false && missed.timedOut === true, 'write+expect timeout shape')
 console.log('write+expect timeout: OK')
 
+/* pause receiving: RX during pause is dropped (not logged, counted), resume records again */
+const pausedRes = await api('/comm/api/pause', 'POST', { link: linkId, paused: true })
+assert(pausedRes.link.paused === true, 'pause API sets paused')
+const beforePause = (await api('/comm/api/state')).links.find((item) => item.id === linkId)
+client.write('PAUSE-DROP-1')
+await waitFor(async () => {
+  const snap = (await api('/comm/api/state')).links.find((item) => item.id === linkId)
+  return snap.pausedDropped >= 1
+}, 5000, 'dropped packet counted')
+const duringPause = (await api('/comm/api/state')).links.find((item) => item.id === linkId)
+assert(duringPause.rx === beforePause.rx, 'rx frozen while paused')
+assert(duringPause.pausedDroppedBytes === 'PAUSE-DROP-1'.length, `pausedDroppedBytes (${duringPause.pausedDroppedBytes})`)
+const pausedPoll = await api('/comm/api/poll?since=0')
+const pausedText = pausedPoll.entries.map((entry) => Buffer.from(entry.b || '', 'base64').toString('utf8')).join('')
+assert(!pausedText.includes('PAUSE-DROP-1'), 'paused RX not written to the log')
+const resumedRes = await api('/comm/api/pause', 'POST', { link: linkId, paused: false })
+assert(resumedRes.link.paused === false, 'resume API clears paused')
+client.write('RESUME-OK')
+await waitFor(async () => {
+  const polled = await api('/comm/api/poll?since=0')
+  return polled.entries.some((entry) => Buffer.from(entry.b || '', 'base64').toString('utf8').includes('RESUME-OK'))
+}, 5000, 'rx recorded after resume')
+console.log('pause receiving via HTTP (rx dropped while paused, resume records): OK')
+
 /* auto-reply debounce persistence via HTTP (tcp link just stores settings) */
 const autoSaved = await api('/comm/api/auto', 'POST', { link: linkId, enabled: true, debounceMs: 80 })
 assert(autoSaved.enabled === true && autoSaved.debounceMs === 80, 'auto debounce saved')

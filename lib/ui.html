@@ -72,7 +72,7 @@
   .ghost-btn{border:1px solid var(--line);background:#151B27;color:var(--muted);border-radius:7px;height:26px;padding:0 9px;font-size:11.5px}
   .ghost-btn:hover{background:#1C2433;color:var(--text)}
   .log-wrap{flex:1 1 0;min-height:0;display:flex;flex-direction:column;overflow:hidden;position:relative;background:#0C111A;border-bottom:1px solid var(--line-soft)}
-  .log{flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;padding:8px 0 10px;font-family:var(--mono);font-size:11.5px;line-height:1.8}
+  .log{flex:1 1 0;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;overflow-anchor:none;padding:8px 0 10px;font-family:var(--mono);font-size:11.5px;line-height:1.8}
   .log::-webkit-scrollbar{width:8px}
   .log::-webkit-scrollbar-thumb{background:#222b3c;border-radius:8px}
   .line{display:flex;gap:7px;padding:0 12px;white-space:pre-wrap;word-break:break-all}
@@ -150,6 +150,8 @@
   .status .right{margin-left:auto;display:flex;gap:8px;align-items:center}
   .rec{color:var(--yellow);display:none}
   .rec.show{display:inline}
+  .pause-stat{color:#F2C66D;font-weight:500}
+  .pause-stat[hidden]{display:none}
   .link-btn{border:0;background:transparent;color:#6E7C96;font-size:10.5px;padding:0}
   .link-btn:hover{color:#AEBDFF}
   .log-menu{position:absolute;top:38px;right:46px;z-index:60;display:none;flex-direction:column;min-width:214px;background:#141A26;border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 28px #00000077;padding:4px}
@@ -282,7 +284,7 @@
     </label>
     <label class="toggle"><input type="checkbox" id="tTs" checked><i></i>时间戳</label>
     <label class="toggle"><input type="checkbox" id="tAuto" checked><i></i>自动滚动</label>
-    <label class="toggle"><input type="checkbox" id="tPause"><i></i>暂停</label>
+    <label class="toggle" title="暂停后不再接收新数据：暂停期间到达的数据不会记录（发送不受影响），恢复后继续"><input type="checkbox" id="tPause"><i></i>暂停</label>
     <button class="ghost-btn" id="autoBtn" title="按规则自动回复收到的数据">自动回复</button>
     <button class="ghost-btn" id="clearBtn" title="清空当前链路的日志（Host 侧一并清除，重进面板不会回来）">清空日志</button>
     <input class="filter" id="filterInput" placeholder="过滤…">
@@ -356,6 +358,7 @@
     <span id="peerStat">对端 0</span>
     <span class="sep">·</span>
     <span>缓冲 <b id="bufPct">0%</b></span>
+    <span class="pause-stat" id="pauseStat" hidden></span>
     <span class="rec" id="recStat">● 录制中</span>
     <span class="right">
       <button class="link-btn" id="saveBtn">导出日志</button>
@@ -461,7 +464,7 @@
   const MODE_LABEL = { serial: '串口', tcpServer: 'TCP 服务端', tcpClient: 'TCP 客户端', udp: 'UDP' }
   const state = {
     mode: 'serial', hex: false, sendHex: false, enc: 'gbk',
-    ts: true, auto: true, paused: true, filter: '',
+    ts: true, auto: true, paused: false, filter: '',
   }
   const links = {}
   const linkByMode = { serial: null, tcpServer: null, tcpClient: null, udp: null }
@@ -469,6 +472,9 @@
   let cursor = 0
   let polling = false
   let followTail = true
+  // 增量渲染状态：view.items 按顺序记录日志 DOM 行 → 条目 q，追加/裁剪时同步 DOM，避免整块重建。
+  const view = { linkId: null, lastQ: 0, items: [] }
+  let lastPauseActionAt = 0
   let recording = false
   let recorded = []
   let toastTimer = null
@@ -654,6 +660,7 @@
 
     const div = document.createElement('div')
     div.className = 'line ' + (item.dir === 'sys' ? 'dim' : 'info') + (decoded.bad && !useHex ? ' bad' : '')
+    div.dataset.q = String(item.q)
     const ts = document.createElement('span')
     ts.className = 'ts'
     ts.textContent = fmtTime(item.t)
@@ -690,17 +697,24 @@
     const wasFollowing = followTail
     logEl.innerHTML = ''
     logEl.classList.toggle('hexmode', state.hex)
+    const items = []
     for (const item of list) {
       const line = makeLine(item)
-      if (line) logEl.appendChild(line)
+      if (!line) continue
+      logEl.appendChild(line)
+      items.push({ q: item.q, el: line })
     }
     if (!list.length) {
       const empty = document.createElement('div')
       empty.className = 'line dim'
       empty.style.padding = '10px 12px'
+      empty.dataset.empty = '1'
       empty.textContent = id ? '暂无数据，等待收发…' : '当前模式未打开链路。'
       logEl.appendChild(empty)
     }
+    view.linkId = id || null
+    view.lastQ = list.length ? list[list.length - 1].q : 0
+    view.items = items
     if (state.auto && wasFollowing) {
       logEl.scrollTop = logEl.scrollHeight
       followTail = true
@@ -709,6 +723,63 @@
     }
     updateJump()
     updateCounters()
+  }
+
+  // 轮询追加：只把新条目接到末尾，不再整块重建 DOM。
+  // 日志达到上限后旧条目会被裁掉（Host 条数/字节上限 + 前端 2000 条上限）。
+  // 这里同步删掉对应的旧行，并在「不跟随最新」时按视口顶部那一行把滚动位置摆回去，
+  // 否则关了自动滚动后日志内容仍会随旧行被裁掉而自己往上跑（看起来像还在滚动）。
+  // 用「锚点行」而不是累加 offsetHeight，是因为 offsetHeight/offsetTop 都是整数像素，
+  // 逐行累加会在 2000 行规模下累积舍入误差（表现为每次裁剪漂一行）。
+  // 同时 .log 上关闭了 CSS scroll-anchoring（overflow-anchor:none），
+  // 否则浏览器会再自动补偿一次，和这里的 scrollTop 补偿叠加，位置会跳两倍。
+  function appendLog() {
+    const id = activeLinkId()
+    const list = id ? (logs.get(id) || []) : []
+    if (!id || view.linkId !== id || logEl.querySelector('[data-empty]')) { renderLog(); return }
+    const wasFollowing = state.auto && followTail
+    // 记下视口顶部那一行（锚点）以及它在视口里的偏移，DOM 变动后按它恢复。
+    let anchor = null
+    let anchorDelta = 0
+    if (!wasFollowing) {
+      for (const el of logEl.children) {
+        if (el.offsetTop + el.offsetHeight > logEl.scrollTop) {
+          anchor = el
+          anchorDelta = el.offsetTop - logEl.scrollTop
+          break
+        }
+      }
+    }
+    const firstQ = list.length ? list[0].q : Infinity
+    let removedHeight = 0
+    while (view.items.length && view.items[0].q < firstQ) {
+      const item = view.items.shift()
+      removedHeight += item.el.offsetHeight || 0
+      item.el.remove()
+    }
+    let added = 0
+    for (const entry of list) {
+      if (entry.q <= view.lastQ) continue
+      view.lastQ = entry.q
+      const line = makeLine(entry)
+      if (!line) continue
+      logEl.appendChild(line)
+      view.items.push({ q: entry.q, el: line })
+      added += 1
+    }
+    if (wasFollowing) {
+      logEl.scrollTop = logEl.scrollHeight
+    } else if (anchor && anchor.isConnected) {
+      logEl.scrollTop = Math.max(0, anchor.offsetTop - anchorDelta)
+    } else if (removedHeight > 0) {
+      // 锚点行自己被裁掉了（用户正在最顶上）：退化为按裁剪高度补偿。
+      logEl.scrollTop = Math.max(0, logEl.scrollTop - removedHeight)
+    }
+    if (!wasFollowing) followTail = (logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight) < 16
+    if (added || removedHeight > 0) {
+      updateJump()
+      updateCounters()
+    }
   }
 
   function updateJump() {
@@ -736,6 +807,18 @@
       ? ('待读队列 ' + (link.backlog || 0) + ' 条 / ' + backlogBytes + ' 字节；累计丢弃 ' + dropped + ' 条 / ' + (link.droppedBytes || 0) + ' 字节（上限由 Host 的 maxLogBytes 决定）')
       : '未打开链路'
     $('statCfg').textContent = linkConfigText()
+    const paused = Boolean(link && link.paused)
+    const pauseStat = $('pauseStat')
+    pauseStat.hidden = !paused
+    if (paused) {
+      const droppedBytes = typeof link.pausedDroppedBytes === 'number' ? link.pausedDroppedBytes : 0
+      const droppedCount = typeof link.pausedDropped === 'number' ? link.pausedDropped : 0
+      pauseStat.textContent = '⏸ 已暂停接收' + (droppedCount ? ' · 已丢弃 ' + droppedCount + ' 条 / ' + fmtBytes(droppedBytes) : '')
+      pauseStat.title = '暂停期间收到的数据不会记录；点工具栏「暂停」恢复接收'
+    } else {
+      pauseStat.textContent = ''
+      pauseStat.title = ''
+    }
     updateSerialSignals()
     if (!link) applyTimerState(null)
     else if (link.timer !== undefined) applyTimerState(link.timer)
@@ -797,6 +880,16 @@
       for (const link of data.links) { links[link.id] = link; alive.add(link.id) }
       for (const id of Object.keys(links)) if (!alive.has(id)) delete links[id]
 
+      // 暂停状态以 Host 上的链路为准（例如另一个面板/网页改了暂停），但刚点过开关时先别覆盖，
+      // 避免 POST 还没回来、旧快照把勾选框闪回去。
+      const activeSnapshot = activeLink()
+      if (activeSnapshot && activeSnapshot.open && Date.now() - lastPauseActionAt > 1200
+        && Boolean(activeSnapshot.paused) !== state.paused) {
+        state.paused = Boolean(activeSnapshot.paused)
+        $('tPause').checked = state.paused
+        saveUiSettings()
+      }
+
       let activeNew = false
       for (const entry of data.entries) {
         if (!logs.has(entry.l)) logs.set(entry.l, [])
@@ -810,7 +903,7 @@
         }
         if (entry.l === activeLinkId()) activeNew = true
       }
-      if (activeNew) renderLog()
+      if (activeNew) appendLog()
       updateHead()
       if (autoOpen && activeLinkId() !== lastAutoLink) {
         lastAutoLink = activeLinkId()
@@ -874,9 +967,18 @@
       linkByMode[mode] = res.link.id
       links[res.link.id] = res.link
       logs.set(res.link.id, [])
+      // 打开时如果面板正处于「暂停」状态，链路一建立就同步过去，避免暂停期间还先记录一段数据。
+      if (state.paused) {
+        try {
+          const data = await api('/comm/api/pause', 'POST', { link: res.link.id, paused: true })
+          if (data && data.link) links[res.link.id] = { ...links[res.link.id], ...data.link }
+        } catch (error) {
+          toast('暂停设置失败：' + ((error && error.message) || error))
+        }
+      }
       renderLog()
       updateHead()
-      toast('已打开 ' + res.link.label)
+      toast('已打开 ' + res.link.label + (state.paused ? '（接收已暂停）' : ''))
     } catch (error) { toast('打开失败：' + error.message) }
   }
 
@@ -1450,7 +1552,32 @@
   })
   $('tTs').addEventListener('change', (event) => { state.ts = event.target.checked; renderLog() })
   $('tAuto').addEventListener('change', (event) => { state.auto = event.target.checked; if (event.target.checked) { followTail = true; renderLog() } })
-  $('tPause').addEventListener('change', (event) => { state.paused = event.target.checked })
+
+  // 暂停接收：勾上后 Host 侧链路停止记录 RX（暂停期间丢弃并计数），发送/系统日志不受影响。
+  async function pushPauseToOpenLinks(paused) {
+    const ids = Object.keys(links).filter((id) => links[id] && links[id].open)
+    for (const id of ids) {
+      try {
+        const data = await api('/comm/api/pause', 'POST', { link: id, paused })
+        if (data && data.link) links[id] = { ...links[id], ...data.link }
+      } catch (error) {
+        toast('暂停设置失败：' + ((error && error.message) || error))
+      }
+    }
+    updateCounters()
+  }
+
+  function setPauseState(paused) {
+    state.paused = Boolean(paused)
+    $('tPause').checked = state.paused
+    lastPauseActionAt = Date.now()
+    updateCounters()
+    saveUiSettings()
+    toast(state.paused ? '已暂停接收数据（暂停期间的数据不记录）' : '已恢复接收')
+    void pushPauseToOpenLinks(state.paused)
+  }
+
+  $('tPause').addEventListener('change', (event) => { setPauseState(event.target.checked) })
   $('clearBtn').addEventListener('click', async () => {
     const id = activeLinkId()
     if (id) logs.set(id, [])

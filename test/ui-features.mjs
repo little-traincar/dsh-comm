@@ -8,9 +8,10 @@ const UI_HTML = readFileSync(new URL('../lib/ui.html', import.meta.url), 'utf8')
 const TOKEN = 'test-token'
 
 /* ── fake Host ── */
-const calls = { timer: [], auto: [], serial: [], open: [], write: [] }
+const calls = { timer: [], auto: [], serial: [], open: [], write: [], pause: [] }
 const state = {
   links: new Map(),
+  entries: [],
   rules: [],
   enabled: false,
   debounceMs: 300,
@@ -86,9 +87,11 @@ const server = http.createServer(async (req, res) => {
   if (url.searchParams.get('token') !== TOKEN) { json(res, 401, { error: 'invalid token' }); return }
 
   if (path === '/comm/api/poll') {
+    const since = Number(url.searchParams.get('since') || 0)
+    const list = state.entries.filter((entry) => entry.q > since)
     json(res, 200, {
-      entries: [],
-      cursor: 0,
+      entries: list,
+      cursor: state.entries.length ? state.entries[state.entries.length - 1].q : since,
       links: Array.from(state.links.values()).map((link) => ({ ...link, timer: state.timer })),
       serial: { available: true, error: null, ports: [] },
     })
@@ -175,7 +178,17 @@ const server = http.createServer(async (req, res) => {
     json(res, 200, { ok: true })
     return
   }
-  if (path === '/comm/api/clear') { json(res, 200, { ok: true, state: {} }); return }
+  if (path === '/comm/api/clear') { state.entries = []; json(res, 200, { ok: true, state: {} }); return }
+  if (path === '/comm/api/pause') {
+    calls.pause.push(body)
+    const link = state.links.get(String(body.link || ''))
+    if (link) {
+      link.paused = Boolean(body.paused)
+      if (link.paused) { link.pausedDropped = 0; link.pausedDroppedBytes = 0 }
+    }
+    json(res, 200, { ok: true, link: link ? { ...link } : null, state: {} })
+    return
+  }
   json(res, 404, { error: 'not found: ' + path })
 })
 
@@ -326,6 +339,108 @@ await wait(() => calls.auto.filter((c) => Number(c.debounceMs) === 500).length >
 console.log('E auto debounce: posts =', JSON.stringify(calls.auto))
 assert($('autoAiState').textContent.indexOf('专用会话') !== -1, 'aiState hint mentions dedicated session')
 assert($('autoAiState').textContent.indexOf('session-x') !== -1, 'aiState hint shows session id')
+
+/* F. 暂停接收：勾选后 POST /comm/api/pause，状态栏出现「已暂停接收」，取消后恢复 */
+assert($('tPause'), 'missing #tPause')
+assert($('pauseStat').hidden === true, 'pauseStat hidden initially')
+$('tPause').checked = true
+change($('tPause'))
+await wait(() => calls.pause.some((c) => c.paused === true), 4000, 'pause POST')
+const pausedLinks = calls.pause.filter((c) => c.paused === true).map((c) => c.link)
+assert(pausedLinks.includes('tcpServer:127.0.0.1:8080'), 'pause posts active link, got ' + JSON.stringify(pausedLinks))
+assert(pausedLinks.includes('serial:COM3'), 'pause applies to every open link, got ' + JSON.stringify(pausedLinks))
+await wait(() => $('pauseStat').hidden === false, 4000, 'pauseStat visible while paused')
+await sleep(400) // 等下一次 poll 把 Host 的 paused 快照带回来
+assert($('pauseStat').textContent.indexOf('暂停接收') !== -1, 'pauseStat text, got ' + $('pauseStat').textContent)
+await wait(() => {
+  try { const saved = JSON.parse(dom.window.localStorage.getItem('dsh-comm.settings.v1')); return Boolean(saved && saved.paused === true) } catch { return false }
+}, 4000, 'pause state persisted')
+$('tPause').checked = false
+change($('tPause'))
+await wait(() => calls.pause.some((c) => c.paused === false), 4000, 'unpause POST')
+await wait(() => $('pauseStat').hidden === true, 4000, 'pauseStat hidden after resume')
+console.log('F pause receiving: posts =', JSON.stringify(calls.pause), '| pauseStat visible while paused then hidden')
+
+/* G. 增量渲染：轮询新条目追加到已有行后面，不再整块重建 DOM */
+const tcpId = 'tcpServer:127.0.0.1:8080'
+state.entries = [{ l: tcpId, q: 1, t: Date.now(), d: 'rx', p: '', b: Buffer.from('first-line').toString('base64'), x: false }]
+await wait(() => doc.querySelectorAll('#log .line').length >= 1 && doc.querySelector('#log .line').textContent.indexOf('first-line') !== -1, 4000, 'first line rendered')
+const firstLine = doc.querySelector('#log .line')
+state.entries.push({ l: tcpId, q: 2, t: Date.now(), d: 'rx', p: '', b: Buffer.from('second-line').toString('base64'), x: false })
+await wait(() => {
+  const lines = Array.from(doc.querySelectorAll('#log .line'))
+  return lines.length >= 2 && lines.some((el) => el.textContent.indexOf('second-line') !== -1)
+}, 4000, 'second line appended')
+assert(doc.querySelector('#log .line') === firstLine, 'append keeps existing DOM lines (no full rebuild)')
+console.log('G incremental log append: lines =', doc.querySelectorAll('#log .line').length, '| first line element preserved')
+
+/* H. 日志到 2000 条上限后裁剪旧行：关了自动滚动时视口内容必须原地不动
+      （旧实现整块重建 + 恢复像素位置，旧行被裁掉后内容会自己往上跑 = “关了自动滚动还在滚”）。
+      jsdom 不做布局，这里把行高/滚动高度/scrollTop 用固定的 20px 几何桩接出来验证锚点补偿。 */
+const logNode = $('log')
+const rowHeight = 20
+const geom = { scrollTop: 0, clientHeight: 100 }
+Object.defineProperty(logNode, 'clientHeight', { configurable: true, get: () => geom.clientHeight })
+Object.defineProperty(logNode, 'scrollHeight', { configurable: true, get: () => logNode.children.length * rowHeight })
+Object.defineProperty(logNode, 'scrollTop', {
+  configurable: true,
+  get: () => geom.scrollTop,
+  set: (value) => {
+    const max = Math.max(0, logNode.scrollHeight - geom.clientHeight)
+    geom.scrollTop = Math.max(0, Math.min(Number(value) || 0, max))
+  },
+})
+Object.defineProperty(dom.window.HTMLElement.prototype, 'offsetHeight', { configurable: true, get: () => rowHeight })
+Object.defineProperty(dom.window.HTMLElement.prototype, 'offsetTop', {
+  configurable: true,
+  get() {
+    const parent = this.parentNode
+    if (!parent || !parent.children) return 0
+    return rowHeight * Array.prototype.indexOf.call(parent.children, this)
+  },
+})
+const lineQ = (el) => Number(el.dataset.q)
+const topLineQ = () => {
+  for (const child of logNode.children) {
+    if (child.offsetTop + child.offsetHeight > logNode.scrollTop) return lineQ(child)
+  }
+  return null
+}
+const scrollTo = (top) => {
+  logNode.scrollTop = top
+  logNode.dispatchEvent(new dom.window.Event('scroll'))
+}
+
+// 关掉自动滚动
+$('tAuto').checked = false
+change($('tAuto'))
+assert($('tAuto').checked === false, 'auto-scroll checkbox off')
+
+// 灌到 2000 条上限以上（一次 poll 拉回来，前端裁到 2000 条、第一条 q 不再是 1）
+for (let q = 3; q <= 2102; q += 1) {
+  state.entries.push({ l: tcpId, q, t: Date.now(), d: 'rx', p: '', b: Buffer.from('H-' + q).toString('base64'), x: false })
+}
+await wait(() => logNode.children.length === 2000, 8000, 'log reaches 2000-line cap')
+const firstQBefore = lineQ(logNode.children[0])
+assert(firstQBefore > 1, 'front entries were trimmed at the cap, first q = ' + firstQBefore)
+
+// 滚到中间，记下视口顶部那一行
+scrollTo(10000)
+const anchorQBefore = topLineQ()
+const anchorBefore = logNode.children[Array.prototype.findIndex.call(logNode.children, (el) => lineQ(el) === anchorQBefore)]
+assert(anchorBefore && anchorBefore.isConnected, 'anchor line found & connected')
+
+// 再来 100 条：会裁掉最旧的 100 行，锚点行必须仍停留在视口顶部
+for (let q = 2103; q <= 2202; q += 1) {
+  state.entries.push({ l: tcpId, q, t: Date.now(), d: 'rx', p: '', b: Buffer.from('H-' + q).toString('base64'), x: false })
+}
+await wait(() => logNode.children.length === 2000 && lineQ(logNode.children[0]) === firstQBefore + 100, 8000, 'next 100 trimmed + appended')
+await sleep(50)
+const anchorQAfter = topLineQ()
+assert(anchorQAfter === anchorQBefore, `viewport content stays put after trim (${anchorQBefore} -> ${anchorQAfter})`)
+assert(geom.scrollTop === 8000, `scrollTop compensated to keep the anchor (got ${geom.scrollTop})`)
+console.log('H cap-trim keeps viewport anchored: firstQ', firstQBefore, '->', lineQ(logNode.children[0]),
+  '| topQ', anchorQBefore, '->', anchorQAfter, '| scrollTop', geom.scrollTop)
 
 /* 收尾 */
 if (errors.length) {

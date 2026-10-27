@@ -15,6 +15,13 @@ DSH 的内嵌通信调试台：**串口 / TCP 服务端 / TCP 客户端 / UDP** 
 
 > 当前最新版已发布，各项功能已经过实际项目测试，均已跑通。
 
+## 本次修复
+
+| 问题 | 现在的能力 |
+|---|---|
+| 关了「自动滚动」日志仍在滚 | 日志渲染从「每 300 ms 整块重建 2000 行」改成**增量追加**；到 2000 条上限裁剪旧行时按**视口锚点行**补偿滚动位置，关了自动滚动后视口内容原地不动。同时关掉 `.log` 的 CSS `overflow-anchor`，避免浏览器自动补偿和手动补偿叠加跳两倍。 |
+| 「暂停」开关没实装 | 勾选后 Host 侧链路**停止接收**：暂停期间的数据直接丢弃并计数（状态栏显示「⏸ 已暂停接收 · 已丢弃 N 条 / N B」），日志和自动回复都不再处理；**发送（TX）和系统日志不受影响**，恢复后从新数据继续记录。开关立即对当前所有已打开链路生效，暂停时新打开的链路也会自动带上。 |
+
 ## 架构
 
 ```
@@ -111,6 +118,8 @@ comm_write { "link": "serial:COM3", "hex": "01 03 00 00 00 01",
 - 日志区显示 RX/TX 字节、当前缓冲占用与累计丢弃量。默认每条链路最多保留 2000 条、4 MiB 原始字节，超限丢最旧条目并计数，不会无界吃内存。
 - 清空日志只清历史，不清 RX/TX/丢弃计数。
 - 缓冲达到上限前的历史都能 `comm_read` 读回；超过上限的部分会以 `dropped` / `droppedBytes` 明确告诉你丢了多少。
+- UI 日志是增量追加的：只有新条目才追加 DOM，旧条目被裁掉时同步删行并按视口锚点补偿滚动位置；因此关了「自动滚动」后不会再出现「内容自己往上跑」。
+- 「暂停」= 暂停接收（Host 侧）：暂停期间 RX 丢弃并计数（`comm_list` 的 `paused` / `pausedDropped` / `pausedDroppedBytes` 可见），日志、自动回复都停；TX 和系统日志照常。恢复后继续记录新数据，暂停期间的数据不会补回。
 
 ### 自动回复
 
@@ -185,14 +194,14 @@ comm_write { "link": "serial:COM3", "hex": "01 03 00 00 00 01",
 npm install
 node test/smoke.mjs          # Host：假 ctx + 真实 HTTP/TCP/UDP
 node test/client.mjs         # Client：假 ModuleLoader/React/ctx
-node test/api-v2.mjs         # v2 HTTP API：timer/serial 守卫/write+expect/auto debounce
+node test/api-v2.mjs         # v2 HTTP API：timer/serial 守卫/write+expect/auto debounce/pause
 node test/auto-reply.mjs     # 自动回复规则 + 持久化
 node test/ai-dedicated.mjs   # 专用会话：自动创建/复用/持久化/失败兜底/旧模式
 node test/serial-errors.mjs  # 串口写失败：超时/参数错误/断开/空内容 的提示与自动重连
 node test/serial-bridge-rx.mjs # 串口桥 RX 回归（需真实/虚拟串口对，见下）
-node test/host-features.mjs  # 串口参数/信号/脉冲/重连、定时/序列、缓冲、write+expect
+node test/host-features.mjs  # 串口参数/信号/脉冲/重连、定时/序列、缓冲、write+expect、暂停接收
 node test/stress-buffer.mjs  # 缓冲/吞吐/延迟压测
-node test/ui-features.mjs    # UI：jsdom + fake Host（串口参数、定时器、自动回复防抖）
+node test/ui-features.mjs    # UI：jsdom + fake Host（串口参数、定时器、自动回复防抖、暂停、2000 条裁剪锚点）
 node test/ui-host.mjs        # UI + 真实 v2 Host 端到端（jsdom，无需 DSH 进程）
 node test/resilience.mjs     # 稳定性：回显抑制/冷却/频率上限/定时器异常隔离/会话服务卡死
 ```
@@ -222,6 +231,8 @@ node test/ui-live.mjs <插件 token>
 - 所有 PowerShell 调用（端口枚举、串口操作）都有超时；`comm_list` / `/comm/api/ports` 不会永久挂起。
 - **串口桥的 stdin 用原始标准输入流 `ReadAsync` 读取**，不再用 `Console.In.ReadLineAsync()`：后者在无控制台、stdin 被重定向的 PowerShell 5.1 里会**同步阻塞**，曾导致 RX 循环被饿死——表现为「能发不能收」。`test/serial-bridge-rx.mjs` 是这条路径的回归测试。
 - `comm_write` 的 `expect` 等待者在成功/超时后都会清理，不会随调用次数堆积。
+- 日志渲染是增量追加 + 锚点补偿的确定性滚动，不依赖浏览器 `overflow-anchor`；2000 条上限裁剪不会让关掉自动滚动的视口跳动。
+- 暂停接收在 Host 侧丢弃 RX，串口桥 / socket / UDP 仍在持续读取，不会把内核缓冲或串口 FIFO 顶爆。
 - 自动回复有回显抑制、500ms 冷却、每分钟 30 次上限；会话 `list/create/rename/prompt` 都有超时，DSH 会话服务卡住时自动回复会失败并记日志，其它工具/接口不受影响。
 - 内存：每链路日志 4 MiB / 2000 条硬上限；`write+expect` 等待者只在有并发请求时短暂存在；自动回复待处理消息最多 50 条。
 

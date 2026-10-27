@@ -201,6 +201,32 @@ await sleep(150)
 assert(batches.length === 1, 'no extra batch after flush')
 console.log('auto-reply debounce coalesces 5 messages into 1 injection: OK')
 
+/* 11. pause receiving: RX dropped while paused (no log, no auto-reply), TX still works */
+const pausedRes = manager.setPaused(live.id, true)
+assert(pausedRes.paused === true, 'snapshot reports paused')
+const backlogBeforePause = live.log.length
+const rxBeforePause = live.rx
+const batchesBeforePause = batches.length
+FakeBridge.instances.at(-1).emitData(Buffer.from('PAUSED-A'))
+FakeBridge.instances.at(-1).emitData(Buffer.from('PAUSED-B'))
+await sleep(120) // 若误触发了自动回复，这个窗口足够让去抖批次 flush
+const pausedSnap = manager.snapshot(live)
+assert(pausedSnap.paused === true, 'still paused')
+assert(pausedSnap.rx === rxBeforePause, `rx frozen while paused (${pausedSnap.rx} vs ${rxBeforePause})`)
+assert(live.log.length === backlogBeforePause, 'no log entries while paused')
+assert(pausedSnap.pausedDropped === 2, `pausedDropped counts dropped packets (${pausedSnap.pausedDropped})`)
+assert(pausedSnap.pausedDroppedBytes === 16, `pausedDroppedBytes counts bytes (${pausedSnap.pausedDroppedBytes})`)
+assert(batches.length === batchesBeforePause, 'auto-reply not triggered while paused')
+const txBeforePause = manager.snapshot(live).tx
+await manager.write(live.id, Buffer.from('TX-OK'))
+assert(manager.snapshot(live).tx === txBeforePause + 5, 'TX still works while paused')
+const resumedSnap = manager.setPaused(live.id, false)
+assert(resumedSnap.paused === false, 'snapshot reports resumed')
+manager.setAuto(live.id, false)
+FakeBridge.instances.at(-1).emitData(Buffer.from('AFTER-RESUME'))
+assert(live.log.some((entry) => Buffer.from(entry.b, 'base64').toString().includes('AFTER-RESUME')), 'rx recorded after resume')
+console.log('pause receiving: RX dropped while paused, TX unaffected, resume records again: OK')
+
 /* tools registration */
 const tools = []
 const routes = []
