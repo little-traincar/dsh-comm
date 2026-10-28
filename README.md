@@ -1,89 +1,97 @@
 # dsh-comm
 
-DSH 的内嵌通信调试台：**串口 / TCP 服务端 / TCP 客户端 / UDP** 四模式，文本与 HEX 收发、编码切换、快捷输入、日志录制与导出。UI 以右栏 tab 的形式嵌在 DSH 里，也可通过独立网页打开，且功能未有删减。
+DSH 的内嵌通信调试台：**串口 / TCP 服务端 / TCP 客户端 / UDP** 四种链路，文本与 HEX 收发、编码切换、快捷输入、行尾设置、日志录制与导出、Host 侧定时/序列发送、自动回复，以及深色 / 浅色两套主题。UI 以右栏 tab 嵌在 DSH 里，也可以直接用独立网页打开。
 
-## 本次更新（针对串口评测）
+链路、日志、定时器都在 Host 侧运行：关面板、切 tab、刷新页面不会断链，也不会停表。模型工具（`comm_*`）和调试台共用同一套链路，可以直接读写对端数据。
 
-| 评测问题 | 现在的能力 |
+- **Host 侧运行**：链路、缓冲、定时器都在 DSH 进程里，浏览器只做轮询展示。
+- **模型可直接操作**：`comm_list / comm_open / comm_read / comm_write / comm_tail / comm_timer / comm_serial` 等工具；`comm_write` 带 `expect` 时一次工具往返完成「发指令 → 看回应」。
+- **串口 Windows 原生**：走 PowerShell + .NET `SerialPort`，不依赖 `serialport` 原生模块，免编译/免 ABI 问题。
+- **右栏 + 独立网页**：同一套 UI 既能在 DSH 右栏 tab 中使用，也能通过 `/comm/ui?token=...` 单独打开。
+- **数据在本机**：规则、串口参数、定时器、主题等按链路/本地保存；日志缓冲区在内存中，有硬上限。
+
+## 本次更新
+
+主题系统：
+
+| 变更 | 说明 |
 |---|---|
-| 串口只暴露波特率 | `comm_open` / UI 支持 **数据位 5–8、校验 N/E/O/M/S、停止位 1/1.5/2、流控 none/RTS-CTS/XON-XOFF、DTR/RTS 初始电平、断线自动重连**；参数按端口持久化。新增 `comm_serial` 可在运行时改参数、拉 DTR/RTS、做复位脉冲。 |
-| 没有定时/序列发送 | **Host 侧定时器**：周期发送（可限次数）与多步序列（每步 `delayMs`，可循环/限轮次）。开在 Host，关掉面板、切 tab 都继续跑，重启后可按 `autostart` 恢复。模型用 `comm_timer`，UI 的「定时/序列…」同一套。 |
-| 没有自动重连 | 串口拔插后自动重开；**端口号从 COM1 变成 COM7 也能按 USB 序列号 / VID+PID 找回**。有健康检查（3s ping），断线状态在 `comm_list` 的 `serial.reconnecting` 可见。 |
-| 缓冲上限未知 | 双上限：`maxLogEntries`（默认 2000 条）+ `maxLogBytes`（默认 4 MiB/链路）。超限丢最旧条目，**丢弃条数/字节数计入 `dropped` / `droppedBytes`**，不会静默丢。压测数据见下。 |
-| 交互延迟 2–5 秒 | 新增 **`comm_write` 的 `expect`**：发一条指令并等回应，**一次工具往返**完成「改寄存器→看反应」。TCP 回环实测平均 0.13 ms；真实串口只额外加设备响应时间。 |
-| 自动回复是注入式提示 | 无规则时的 AI 转发改为 **去抖合并**（默认 300 ms 窗口，可配）：窗口内多条消息/重复内容合并成**一次**会话注入；并且默认**自动创建/复用专用会话「dsh-comm 自动回复」**，自动回复不再出现在你的主对话里。 |
+| 顶部主题开关 | 标题栏右上角（日志按钮左侧）新增 ☀ / ☾ 按钮，点击切换深色 / 浅色 |
+| 深色主题 | 保持原有配色（默认主题），所有控件观感不变 |
+| 浅色主题（新增） | 完整浅色配色：面板、输入框、下拉、按钮、分段控件、日志区、TX/RX 标签、滚动条、弹窗、toast、状态色全部适配 |
+| 跟随 DSH | 没有手动切换过主题时，面板通过 `postMessage` 跟随 DSH 的深/浅色；手动切换后以开关为准，不再被 DSH 覆盖 |
+| 选择记忆 | 主题选择存 `localStorage`，重开面板保持；独立网页默认深色，也可用 `?theme=light` / `?theme=dark` 临时指定 |
 
-> 当前最新版已发布，各项功能已经过实际项目测试，均已跑通。
+## 功能详细表格
 
-## 本次修复
-
-| 问题 | 现在的能力 |
-|---|---|
-| 关了「自动滚动」日志仍在滚 | 日志渲染从「每 300 ms 整块重建 2000 行」改成**增量追加**；到 2000 条上限裁剪旧行时按**视口锚点行**补偿滚动位置，关了自动滚动后视口内容原地不动。同时关掉 `.log` 的 CSS `overflow-anchor`，避免浏览器自动补偿和手动补偿叠加跳两倍。 |
-| 「暂停」开关没实装 | 勾选后 Host 侧链路**停止接收**：暂停期间的数据直接丢弃并计数（状态栏显示「⏸ 已暂停接收 · 已丢弃 N 条 / N B」），日志和自动回复都不再处理；**发送（TX）和系统日志不受影响**，恢复后从新数据继续记录。开关立即对当前所有已打开链路生效，暂停时新打开的链路也会自动带上。 |
-
-## 架构
-
-```
-dsh-comm
-├─ lib/index.js          Host 半边
-│   ├─ CommManager       串口 / TCP Server / TCP Client / UDP、定时器、日志缓冲
-│   ├─ 模型工具          comm_list/open/close/read/write/serial/timer/peers/tail
-│   ├─ /comm/ui          UI 页面
-│   ├─ /comm/api/*       轮询 / 打开 / 串口控制 / 定时器 / 发送 / 端口
-│   └─ index 注入        window.__DSH_COMM__ = { base, token }
-├─ lib/serial-windows.js Windows 串口桥（Node 侧）
-├─ lib/serial-host.ps1   PowerShell 侧 JSON 行协议
-├─ lib/client.js         Client 半边
-└─ lib/ui.html           控制台页面
-```
-
-- 链路状态、日志、定时器全部在 Host：关面板、切 tab、刷新页面不会断链，也不会停表。
-- 浏览器只拿轮询 API，不直接碰 socket。
-- 串口走 PowerShell 的 `System.IO.Ports.SerialPort`，避免 `serialport` 原生模块的 ABI/构建问题。
-- 串口接收不用 `DataReceived` 事件（跨线程且按 15 ms 轮询会丢字节），改成主循环每 5 ms `BytesToRead` + `Read(byte[])`，字节直读，二进制/GBK 不会被编码破坏。
-- UI iframe 与 DSH 页面同源，Cookie 自动带上；`/comm/*` 额外要求进程 token。
-
-## 插件界面
-
-![Alt text](<屏幕截图 2026-10-23 162554.png>)
+| 分类 | 功能 | 说明 |
+|---|---|---|
+| 链路 | 串口 | 数据位 5–8、校验 N/E/O/M/S、停止位 1/1.5/2、流控 none/RTS-CTS/XON-XOFF、DTR/RTS 初始电平、断线自动重连；参数按端口持久化；拔插后按 USB 序列号 / VID+PID 找回新 COM 号 |
+| 链路 | TCP 服务端 | 指定绑定地址与端口，支持多客户端；`comm_peers` 查看客户端，`comm_write` 可指定 peer 或广播 |
+| 链路 | TCP 客户端 | 主动连接远端；纯流视图（无帧/粘包解析） |
+| 链路 | UDP | 指定本地绑定、远端地址与端口；收发原始数据报 |
+| 收发 | 文本 / HEX | 文本按所选编码编解码；HEX 按字节解析，支持 `0x` 前缀、空格/逗号分隔 |
+| 收发 | 编码 | UTF-8、GBK、GB18030、Big5、Shift-JIS、EUC-KR、Windows-1252，收发与日志展示共用 |
+| 收发 | 行尾 | 文本发送可选 `CR+LF` / `LF` / `CR` / `无`（默认 CR+LF）；HEX 不追加 |
+| 收发 | 快捷输入 | 按模式保存常用发送项，支持名称、内容、文本/HEX，一键发送 |
+| 低延迟 | `write + expect` | 发送后在同一次工具调用里等待匹配回包，返回 `matched`、`waitedMs` 和窗口内 `entries`；支持 contains / 正则，TCP 回环实测平均 0.13 ms |
+| 定时 | Host 侧定时器 | 周期发送（可限次数）与多步序列（每步 `delayMs`，可循环、限轮次）；关闭面板、切 tab 继续跑；支持保存、自动开始 |
+| 日志 | 双上限缓冲 | 每条链路最多 2000 条 / 4 MiB 原始字节，超限丢最旧并计入 `dropped` / `droppedBytes`，不静默丢数据 |
+| 日志 | 增量渲染 / 暂停 | 日志增量追加 DOM，2000 条裁剪时按视口锚点补偿滚动；「暂停」= Host 侧丢弃 RX 并计数（日志、自动回复停止，TX 与系统日志照常） |
+| 日志 | 搜索 / 导出 / 录制 | 日志过滤、导出 `.log` / `.csv` / 接收原始字节 `.bin`；浏览器侧录制（内存）与清空 |
+| 自动化 | 自动回复 | 有规则时按 contains / regex / HEX 匹配并自动回复（编码、延迟、回显抑制、冷却、频率上限）；无规则时可转 DSH 会话，由模型回复（去抖合并 + 专用会话 + 失效自愈） |
+| 界面 | 主题 | 深色 / 浅色两套主题，顶部开关切换；未手动切换时跟随 DSH 主题 |
+| 界面 | 状态与操作 | RX/TX 字节、编码、对端数、缓冲占用、暂停/录制状态；串口 DTR / RTS / 复位 DTR / 重连按钮 |
+| 模型 | 工具面 | 9 个 `comm_*` 工具与 UI 共用 Host 状态；`comm_list` 返回链路、缓冲、丢弃、定时器、串口信号等完整快照 |
+| 持久化 | 配置恢复 | 自动回复规则/开关、串口参数、定时器配置按链路 id 保存到 `comm-settings.json`；链路本身重启后需重新打开 |
 
 ## 安装
 
-前提：DSH `0.2.1-rc.2`（`0.2.0-rc.2` 也兼容）。
+前提：DSH `0.2.1` 系列（实测`0.2.1-rc.2`、`0.2.1-rc.3`）。
+
+### 方式一：从 GitHub 安装
 
 ```bash
-# 在插件目录
-npm pack
-# 得到 dsh-comm-<version>.tgz
-dsh plugin --profile web add ./dsh-comm-<version>.tgz
-# 重启 dsh web
-dsh web
+dsh plugin --profile web add github:little-traincar/dsh-comm
 ```
 
-Desktop 版：在「设置 → 插件」里安装同一个 tarball（或让 DSH 从本地路径安装），然后重启应用。若桌面插件窗口只接受 npm 包名，可先把 tarball 放到本地并用 CLI 的 `plugin add` 安装到 web profile，再通过 `dsh web` 使用。
+### 方式二：从 npm 安装
 
-安装后打开右侧边栏的引导页，会看到「通信」入口；点开就是一个 tab。也可以直接从 DSH 页面地址打开：
-
-```
-http://127.0.0.1:<port>/comm/ui?token=<Host 启动日志里打印的 uiToken 或注入值>
+```bash
+dsh plugin --profile web add dsh-comm
 ```
 
-> `/comm/ui` 的 token 是插件自己的进程 token，不是 DSH 的启动 token；它由 Host 注入到 `window.__DSH_COMM__`，正常从右栏进入即可，不需要手填，如果需要网页打开直接问你的AI要链接即可。
+Desktop 版：在「设置 → 插件」里安装，来源填 `github:little-traincar/dsh-comm` 或 `dsh-comm`，安装后**完全退出 DSH 再启动**。
+
+> 插件在启动时加载 UI 与 Host 代码，**安装或更新后必须重启 DSH** 才会生效；只刷新页面不够。
+
+安装后从右侧边栏进入「通信」tab 即可使用。也可以直接用独立网页打开：
+
+```
+http://127.0.0.1:<port>/comm/ui?token=<插件 uiToken>
+```
+
+`/comm/ui` 的 token 是插件自己的进程 token（不是 DSH 启动 token），由 Host 注入到 `window.__DSH_COMM__`，正常从右栏进入不需要手填；需要网页地址时向 Host 取一次即可。
 
 ## 使用
+
+### 主题
+
+- 标题栏右上角的 ☀ / ☾ 按钮切换深色 / 浅色，选择会被记住。
+- 没有手动切换过时，面板跟随 DSH 的深/浅色主题；手动切换过之后以开关为准。
+- 独立网页（`/comm/ui`）默认深色，点开关即可切换；也可以在 URL 上加 `?theme=light` 或 `?theme=dark` 临时指定。
 
 ### 串口
 
 1. 选串口、波特率、数据位、校验、停止位、流控，按需勾 DTR / RTS / 断线重连，点「打开」。
-2. 打开后状态栏会出现 **DTR / RTS / 复位DTR / 重连**：DTR/RTS 点击切换电平；「复位DTR」把 DTR 拉低 100 ms 后恢复（很多模块靠这个复位）；「重连」手动重开。
-3. 串口参数会按端口路径保存，下次选中同一端口自动回填；也提供给 `comm_open` 作为缺省值。
-4. 拔掉 USB 转串口：Host 会打出「串口断开」，自动重连；如果系统分配了新 COM 号，按之前记录的 USB 序列号/VID+PID 找回，日志里提示 `已重新连接 COMx`。
-5. 想换 7E1 / 2 停止位 / RTS-CTS：在 `comm_open` 传 `parity:'even', dataBits:7, flowControl:'rtscts'`，或 UI 里改完点「打开」，或在已连接时用 `comm_serial` 的 `configure`（会关闭并按新参数重开，链路 id 不变）。
+2. 打开后状态栏出现 **DTR / RTS / 复位DTR / 重连**：DTR/RTS 点击切换电平；「复位DTR」把 DTR 拉低 100 ms 后恢复（很多模块靠这个复位）；「重连」手动重开。
+3. 串口参数按端口路径保存，下次选中同一端口自动回填；也作为 `comm_open` 的缺省值。
+4. 拔掉 USB 转串口：Host 会打出「串口断开」并自动重连；如果系统分配了新 COM 号，按之前记录的 USB 序列号 / VID+PID 找回，日志提示 `已重新连接 COMx`。
+5. 需要 7E1 / 2 停止位 / RTS-CTS：在 `comm_open` 传 `parity:'even', dataBits:7, flowControl:'rtscts'`，或 UI 改完点「打开」，或已连接时用 `comm_serial` 的 `configure`（关闭并按新参数重开，链路 id 不变）。
 
-### 定时 / 序列发送（Host 侧）
+### 定时 / 序列发送
 
-- UI：发送栏「定时」勾选 + 间隔，直接用当前输入内容周期发送；「定时/序列…」打开完整编辑（周期/序列、循环、次数、自动开始）。
+- UI：发送栏「定时」勾选 + 间隔，用当前输入内容周期发送；「定时/序列…」打开完整编辑（周期 / 序列、循环、次数、自动开始）。
 - 模型：
 
 ```jsonc
@@ -103,7 +111,7 @@ comm_timer { "link": "serial:COM3", "action": "start", "kind": "sequence",
 
 `action: "start"` = 保存并运行；`"stop"` 只停运行、保留定义；`"save"` 只保存；`"delete"` 删除保存。`autostart: true` 表示下次链路打开时自动开始。
 
-### 写 + 等回应（低延迟请求/响应）
+### 写 + 等回应
 
 ```jsonc
 comm_write { "link": "serial:COM3", "hex": "01 03 00 00 00 01",
@@ -111,28 +119,29 @@ comm_write { "link": "serial:COM3", "hex": "01 03 00 00 00 01",
              "expectTimeoutMs": 500 }
 ```
 
-返回里有 `matched`、`waitedMs` 和窗口内收到的 `entries`（text + hex）。这样一次工具调用就能完成「发指令 + 看回应」，不用 `comm_write` 后再 `comm_read` 多等一轮模型往返。`expectMode: "regex"` 支持正则。
+返回里有 `matched`、`waitedMs` 和窗口内的 `entries`（text + hex），一次工具调用即可完成「发指令 + 看回应」。`expectMode: "regex"` 支持正则。
 
-### 日志 / 缓冲
+> 注意：匹配窗口包含本端 TX 条目，`expect` 用宽松字符串可能命中自己发出的数据；建议用回执专属前缀（如设备回复的命令字 / 帧头）或 HEX 匹配。超时情况下 `ok` 仍为 `true`，需检查 `matched` / `timedOut`。
 
-- 日志区显示 RX/TX 字节、当前缓冲占用与累计丢弃量。默认每条链路最多保留 2000 条、4 MiB 原始字节，超限丢最旧条目并计数，不会无界吃内存。
+### 日志 / 缓冲 / 暂停
+
+- 日志区显示 RX/TX 字节、缓冲占用与累计丢弃量。默认每条链路 2000 条、4 MiB 原始字节，超限丢最旧条目并计数，不会无界吃内存。
 - 清空日志只清历史，不清 RX/TX/丢弃计数。
-- 缓冲达到上限前的历史都能 `comm_read` 读回；超过上限的部分会以 `dropped` / `droppedBytes` 明确告诉你丢了多少。
-- UI 日志是增量追加的：只有新条目才追加 DOM，旧条目被裁掉时同步删行并按视口锚点补偿滚动位置；因此关了「自动滚动」后不会再出现「内容自己往上跑」。
-- 「暂停」= 暂停接收（Host 侧）：暂停期间 RX 丢弃并计数（`comm_list` 的 `paused` / `pausedDropped` / `pausedDroppedBytes` 可见），日志、自动回复都停；TX 和系统日志照常。恢复后继续记录新数据，暂停期间的数据不会补回。
+- 缓冲上限前的历史都能 `comm_read` 读回；超出部分以 `dropped` / `droppedBytes` 明确报告。
+- UI 日志增量追加：只追加新条目，裁剪旧行时按视口锚点补偿滚动位置；关闭「自动滚动」后不会自己跳动。
+- 「暂停」= 暂停接收（Host 侧）：暂停期间 RX 丢弃并计数（`comm_list` 的 `paused` / `pausedDropped` / `pausedDroppedBytes` 可见），日志与自动回复停止；TX 和系统日志照常。恢复后从新数据继续，暂停期间的数据不会补回。
 
 ### 自动回复
 
-- **有规则**：按 contains / regex / HEX 匹配收到的数据，按规则回复（可设编码、延迟、回发送者或广播），规则按链路持久化。
-- **无规则 + 已启用**：方案 A —— 把消息转给 DSH 会话，由模型用 `comm_write` 回复。
-  - 去抖合并：窗口内（默认 300 ms，UI 或 `/comm/api/auto` 的 `debounceMs` 可调）的多条消息合并成一次注入，重复内容会标注「重复 N 次」。
-  - **默认专用会话**：首次自动回复时自动创建（并改名）`dsh-comm 自动回复` 会话，之后一直复用；会话 id 存在 `comm-settings.json` 的 `aiReplySessionId`，丢了/删了会自动重建。这样自动回复不会出现在你正在聊的主对话里，在左侧会话列表能看到它，也可以点进去看它回了什么。
-  - **失效自愈**：每次投递前先确认绑定会话还在（列表里不存在、或被删除/归档就清掉绑定重建）；投递报「会话不存在」时重建并重试一次；投递成功后若 `aiReplyLivenessMs`（默认 30s）内该链路一次发送都没有，记为一次无响应，连续两次自动解除绑定，下条消息重建。避免「会话没了还一直往死 id 投递、日志却写已转给」。
-  - `comm_list` 的 `aiReplySessionId` 显示当前绑定（`null` = 未绑定，下条消息会新建/重选）。
-  - 想指定固定会话：插件 config 里设 `aiReplySession: '<会话 id>'`（优先于自动创建）。
-  - 想退回旧行为（转给最近活跃的会话）：设 `aiReplyDedicatedSession: false`。
-  - 防回环：自己刚发出的数据在 `aiReplyEchoSuppressMs`（默认 300ms）内原样回来（串口回显/TCP 回环/设备 echo）不会触发自动回复；两次转发至少间隔 `aiReplyCooldownMs`（默认 500ms）；60s 内超过 `aiReplyMaxPerMinute`（默认 30）次会暂停 30s 并记系统日志。会话 list/create/rename/prompt 都有超时，DSH 会话服务卡住也不会把自动回复永久挂住。
-  - DSH 的会话注入只能以 user 消息形式入队，这是方案 A 的固有形态；专用会话 + 合并是把它对主对话的干扰降到最低的方式。会话创建失败时会退回最近会话并记系统日志；没有可用会话/转发失败时只记系统日志，不会乱回数据。
+- **有规则**：按 contains / regex / HEX 匹配收到的数据，按规则回复，规则按链路持久化。
+- **无规则 + 已启用**：把消息转给 DSH 会话，由模型用 `comm_write` 回复。
+  - 去抖合并：窗口内（默认 300 ms，UI 或 `/comm/api/auto` 的 `debounceMs` 可调）的多条消息合并成一次注入，重复内容标注「重复 N 次」。
+  - **默认专用会话**：首次自动回复时自动创建（并改名）`dsh-comm 自动回复` 会话，之后复用；会话 id 存在 `comm-settings.json` 的 `aiReplySessionId`，丢失/删除后自动重建。自动回复不会出现在主对话里。
+  - **失效自愈**：投递前确认绑定会话仍在（不存在/被删除/归档则清掉重建）；投递报「会话不存在」时重建并重试一次；投递成功后 `aiReplyLivenessMs`（默认 30s）内该链路无发送则记一次无响应，连续两次自动解除绑定。
+  - `comm_list` 的 `aiReplySessionId` 显示当前绑定（`null` = 未绑定）。
+  - 指定固定会话：config 里设 `aiReplySession: '<会话 id>'`；退回旧行为（转最近活跃会话）：设 `aiReplyDedicatedSession: false`。
+  - 防回环：自己刚发出的数据在 `aiReplyEchoSuppressMs`（默认 300ms）内原样回来不触发；两次转发至少间隔 `aiReplyCooldownMs`（默认 500ms）；60s 内超过 `aiReplyMaxPerMinute`（默认 30）次暂停 30s 并记日志。会话 list/create/rename/prompt 都有超时。
+  - DSH 会话注入只能以 user 消息形式入队，这是该方案的固有形态；专用会话 + 合并用于把干扰降到最低。
 
 ## 模型工具
 
@@ -146,7 +155,7 @@ comm_write { "link": "serial:COM3", "hex": "01 03 00 00 00 01",
 | `comm_write` | 发文本（带 encoding）或 HEX；带 `expect` 时同时等回应；TCP 服务端可指定 peer |
 | `comm_serial` | 串口运行时控制：`signals` / `set` / `pulse` / `configure` / `reconnect` |
 | `comm_timer` | Host 定时/序列发送：`start` / `stop` / `save` / `status` |
-| `comm_tail` | 等某个字符串出现（带超时），适合等设备 `READY` |
+| `comm_tail` | 等某个字符串出现，适合等设备 `READY` |
 
 ## 配置
 
@@ -169,11 +178,11 @@ comm_write { "link": "serial:COM3", "hex": "01 03 00 00 00 01",
     aiReplyLivenessMs: 30000   # 转发后多久没发送算一次无响应；连续两次重建专用会话
 ```
 
-`comm_list` 的返回值现在统一经过无损 JSON 收敛（去掉 `undefined`、NaN/Infinity 转 null、Buffer 转 base64），不会再出现 `value is not lossless JSON`。
+`comm_list` 的返回值经过无损 JSON 收敛，不会出现 `value is not lossless JSON`。
 
 ## 缓冲与压测
 
-`node test/stress-buffer.mjs`（Windows 本机，Node 24，TCP 回环 / 假串口桥，无真实串口硬件）：
+以下均为 Windows 本机、Node 24 下的**实际运行结果**：
 
 | 场景 | 结果 |
 |---|---|
@@ -184,8 +193,9 @@ comm_write { "link": "serial:COM3", "hex": "01 03 00 00 00 01",
 | 假串口桥灌 8 MB，4 MiB 上限 | 6 ms；丢弃 257 条 / 4194331 B |
 
 结论：
-- 缓冲有硬上限，内存不会随采集时长增长；丢的是最旧历史，丢多少有 `dropped`/`droppedBytes` 计数，不会静默。
-- 从 socket/串口桥到 Host 计数不丢字节（压测里 `rx` 与发送量逐字节相等）；实时消费请用 `comm_read`/`comm_tail`/`comm_write+expect`。
+
+- 缓冲有硬上限，内存不随采集时长增长；丢的是最旧历史，丢多少有 `dropped` / `droppedBytes` 计数，不会静默。
+- 从 socket / 串口桥到 Host 计数不丢字节（压测中 `rx` 与发送量逐字节相等）；实时消费请用 `comm_read` / `comm_tail` / `comm_write+expect`。
 - 串口侧理论吞吐：PowerShell 主循环 5 ms 轮询 + 16 KiB 读缓冲，921600 波特（~92 KiB/s）时每 5 ms 约 460 B，余量很大；2 Mbaud（~200 KiB/s）约 1 KiB/5 ms，也够。再高需看 Windows 驱动缓冲。
 
 ## 本地测试
@@ -206,7 +216,7 @@ node test/ui-host.mjs        # UI + 真实 v2 Host 端到端（jsdom，无需 DS
 node test/resilience.mjs     # 稳定性：回显抑制/冷却/频率上限/定时器异常隔离/会话服务卡死
 ```
 
-串口桥 RX 回归需要一对串口（真实 USB 转串口短接 TX/RX，或用虚拟串口对）：
+以上测试脚本均已在 Windows 本机实际运行通过。串口桥 RX 回归需要一对串口（真实 USB 转串口短接 TX/RX，或虚拟串口对）：
 
 ```powershell
 $env:DSH_COMM_RX_PORT='COM0'   # 插件打开的一端
@@ -214,37 +224,32 @@ $env:DSH_COMM_TX_PORT='COM10'  # 从这一端写入
 node test/serial-bridge-rx.mjs
 ```
 
-需要真实 DSH 的 UI 测试：
-
-```bash
-# 隔离的 DSH_HOME，避免影响当前 Desktop
-npx @deepseek-ai/dsh@0.2.1-rc.2 web --no-open --port 3999
-# 另开一个终端，把启动日志里的 token 传进去
-node test/ui-live.mjs <插件 token>
-```
-
-本次改动已在真实 DSH `0.2.1-rc.2`上验证：`/comm/bootstrap`、`/comm/ui`、TCP 打开/收发/清空、`write+expect`、Host 定时器、自动回复 debounce、`/serial` 守卫均通过，启动日志无插件报错。
-
 ## 稳定性
 
-- 所有定时器（`setTimeout`/`setInterval`）都 `unref` 且回调内部 `try/catch`：定时发送/序列/重连/健康检查里任何异常只会停掉对应链路并记一条系统日志，不会作为未捕获异常抛进 Host 进程。
+- 所有定时器（`setTimeout` / `setInterval`）都 `unref` 且回调内部 `try/catch`：定时发送、序列、重连、健康检查里任何异常只会停掉对应链路并记一条系统日志，不会作为未捕获异常抛进 Host 进程。
 - 所有 PowerShell 调用（端口枚举、串口操作）都有超时；`comm_list` / `/comm/api/ports` 不会永久挂起。
-- **串口桥的 stdin 用原始标准输入流 `ReadAsync` 读取**，不再用 `Console.In.ReadLineAsync()`：后者在无控制台、stdin 被重定向的 PowerShell 5.1 里会**同步阻塞**，曾导致 RX 循环被饿死——表现为「能发不能收」。`test/serial-bridge-rx.mjs` 是这条路径的回归测试。
+- **串口桥的 stdin 用原始标准输入流 `ReadAsync` 读取**，不再用 `Console.In.ReadLineAsync()`：后者在无控制台、stdin 被重定向的 PowerShell 5.1 里会同步阻塞，曾导致 RX 循环被饿死（表现为「能发不能收」）；`test/serial-bridge-rx.mjs` 是这条路径的回归测试。
 - `comm_write` 的 `expect` 等待者在成功/超时后都会清理，不会随调用次数堆积。
-- 日志渲染是增量追加 + 锚点补偿的确定性滚动，不依赖浏览器 `overflow-anchor`；2000 条上限裁剪不会让关掉自动滚动的视口跳动。
+- 日志渲染是增量追加 + 锚点补偿的确定性滚动，不依赖浏览器 `overflow-anchor`；2000 条上限裁剪不会让关闭自动滚动的视口跳动。
 - 暂停接收在 Host 侧丢弃 RX，串口桥 / socket / UDP 仍在持续读取，不会把内核缓冲或串口 FIFO 顶爆。
-- 自动回复有回显抑制、500ms 冷却、每分钟 30 次上限；会话 `list/create/rename/prompt` 都有超时，DSH 会话服务卡住时自动回复会失败并记日志，其它工具/接口不受影响。
+- 自动回复有回显抑制、冷却、每分钟上限；会话 list/create/rename/prompt 都有超时，DSH 会话服务卡住时自动回复会失败并记日志，其它工具/接口不受影响。
 - 内存：每链路日志 4 MiB / 2000 条硬上限；`write+expect` 等待者只在有并发请求时短暂存在；自动回复待处理消息最多 50 条。
 
 ## 已知限制
 
 - **串口仅 Windows**：走 PowerShell 桥；Linux/macOS 暂不支持（网络功能跨平台）。
-- **虚拟串口写报「参数错误」不是插件问题**：这类错误由驱动返回（Win32 `ERROR_INVALID_PARAMETER`），常见于 HHD/Eltima 等虚拟串口只建了单端、对端程序没打开，或端口被配置成别名/共享/TCP/管道但没有后端。用纯 .NET `SerialPort.Write` 直接写同一个口也会报同样的错。解决：把虚拟串口配置成一对本地桥接端口（vysercfg / Eltima / com0com），并在另一端用串口工具打开；或者直接用真实 USB 转串口设备。
-- 串口功能已用假桥覆盖参数/信号/重连/定时逻辑，真实 USB 转串口已用「桥接收数据」回归测试验证 RX；`7E1/2 停止位/流控/复位脉冲` 等仍需按设备实测。
-- TCP 客户端没有自动重连（串口有）；TCP 是流视图，还没有帧/粘包解析。
-- 浏览器侧「录制日志」仍只在浏览器内存里；Host 侧日志缓冲是有限的（见上）。
-- 公网/远程访问依赖 DSH 自己的部署方式，本插件不额外加鉴权层，只靠进程 token + 同源 Cookie。
-- 安装完点击立即启用可能提示无法启用，重启 DSH 后即可正常使用。
+- **虚拟串口兼容性**：HHD / Eltima 等虚拟串口只建单端、对端未打开，或端口是别名/共享/TCP/管道但没有后端时，写会报「参数错误」（Win32 `ERROR_INVALID_PARAMETER`）。这不是插件问题，纯 .NET `SerialPort.Write` 同样报错；建议使用成对的 com0com 端口或真实 USB 转串口。
+- **真实硬件覆盖有限**：串口已用假桥覆盖参数/信号/重连/定时逻辑，并用真实 USB 转串口验证过 RX；`7E1`、`2 停止位`、`RTS-CTS / XON-XOFF`、复位脉冲等仍需按实际设备验证。
+- **TCP 客户端没有自动重连**: TCP 是流视图，没有帧/粘包解析。
+- **`expect` / `comm_tail` 不区分收发方向**：匹配窗口包含本端 TX 条目，宽松字符串可能命中自己发出的数据；请用回执专属前缀或 HEX。`comm_write` 超时仍返回 `ok: true`，要以 `matched` / `timedOut` 为准。
+- **UDP 目标不会自动跟随**：设备修改 IP / 端口后，UDP 链路仍发往旧地址，不会报错；需要手动改链路远端或重新打开。
+- **链路状态不持久**：重启 DSH / 插件后已打开的链路需要重新打开；`/comm/ui` 的 token 每次启动随机（除非配置 `uiToken`），旧网页标签会 401，需要刷新或重新取地址。
+- **主题跟随边界**：手动切换过主题后不再跟随 DSH；独立网页读不到 DSH 主题，默认深色（可用开关或 `?theme=` 指定）。
+- **日志与录制边界**：Host 每链路 2000 条 / 4 MiB 上限，超出丢最旧（有丢弃计数）；浏览器「录制」只在浏览器内存里。
+- **自动回复（AI 模式）的固有形态**：回复以 user 消息注入专用会话；有去抖、冷却、回显抑制与每分钟上限（默认 30 次/分），待处理消息上限 50 条；依赖 DSH 会话服务。
+- **远程访问**：`/comm/bootstrap` 仅允许 loopback；从其他机器直连 DSH 地址时拿不到插件 token，独立网页需要手动带 token URL，且 token 每次重启会变。插件本身不额外加鉴权层。
+- **安装/更新后需重启 DSH**：UI 与 Host 代码在插件启动时加载，只刷新页面不会更新。
+- **兼容性**：面向 DSH `0.2.1` 系列（`0.2.1-rc.2`、`0.2.1-rc.3` 实测），其他版本未验证。
 
 ## 安全提醒
 
@@ -255,8 +260,6 @@ node test/ui-live.mjs <插件 token>
 
 ## 许可证
 
-- **当前仓库主干（下一个发布版本起）**：Apache License 2.0，见 `LICENSE` 与 `NOTICE`。
-- **历史版本**：0.1.8 及更早的版本以 MIT License 发布；已发布的授权不可撤回，那些版本继续按 MIT 有效。
-
-Apache-2.0 允许商业使用、修改和再分发；再分发时需保留版权/许可/署名声明、附带许可证副本、保留 `NOTICE`，并标注修改过的文件。它包含明确的专利授权（§3）和商标不授权声明（§6）；转售者如果对外提供质保或赔偿，责任由其自行承担，并需使贡献者免责（§9）。
-
+- 当前仓库使用 **Apache License 2.0**（见 `LICENSE` 与 `NOTICE`）。
+- 自 **v0.1.9**起为 Apache-2.0；**v0.1.8 及更早** 的已发布版本为 MIT License。
+- 已发布版本的授权不可撤回，旧版本继续按 MIT 有效。
