@@ -1,4 +1,4 @@
-// 用 jsdom 驱动真实 DSH 实例里的内嵌 UI，验证：
+﻿// 用 jsdom 驱动真实 DSH 实例里的内嵌 UI，验证：
 //   - 页面能启动、轮询 Host API
 //   - 切到 TCP 服务端 -> 监听 -> 客户端接入 -> 日志出现
 //   - 从 UI 发送 -> 对端收到
@@ -54,8 +54,8 @@ const { window } = dom
 const doc = window.document
 
 try {
-  await waitFor(() => doc.querySelector('#headText') && doc.querySelector('#headText').textContent.includes('串口'), 5000, 'UI boot')
-  assert(doc.querySelectorAll('#modeTabs button').length === 4, 'four mode tabs')
+  await waitFor(() => doc.querySelector('#headTitle') && doc.querySelector('#headTitle').textContent.includes('串口'), 5000, 'UI boot')
+  assert(doc.querySelectorAll('.rail-btn[data-mode]').length === 4, 'four mode tabs')
   console.log('UI boot OK')
 
   // 主题跟随：Client 会 postMessage，UI 应切到 light
@@ -64,7 +64,7 @@ try {
   console.log('theme switch OK')
 
   const port = await freePort()
-  doc.querySelector('#modeTabs button[data-mode="tcpServer"]').click()
+  doc.querySelector('.rail-btn[data-mode="tcpServer"]').click()
   assert(doc.querySelector('#cfgTcpServer').classList.contains('active'), 'tcpServer config visible')
   doc.querySelector('#tsPort').value = String(port)
   doc.querySelector('#tsBtn').click()
@@ -112,3 +112,5 @@ try {
 } finally {
   try { dom.window.close() } catch { /* ignore */ }
 }
+
+

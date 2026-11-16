@@ -196,6 +196,32 @@ const clearedLink = cleared.links.find((item) => item.id === linkId)
 assert(clearedLink.backlog === 0 && clearedLink.backlogBytes === 0, 'clear resets backlog')
 console.log('clear resets backlog: OK')
 
+/* panel background image: upload -> served with token -> clear */
+const PNG_1PX = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z0b8AAAAASUVORK5CYII='
+const emptyBg = await api('/comm/api/background')
+assert(emptyBg.image === null, 'background empty initially')
+await api('/comm/api/background', 'POST', { dataUrl: 'data:text/plain;base64,AAAA' }).then(
+  () => { throw new Error('non-image dataUrl should fail') },
+  (error) => assert(String(error.message).includes('400'), 'non-image dataUrl rejected with 400'),
+)
+const savedBg = await api('/comm/api/background', 'POST', { dataUrl: 'data:image/png;base64,' + PNG_1PX })
+assert(typeof savedBg.image === 'string' && savedBg.image.startsWith('/comm/asset/background'), 'background upload returns image url')
+assert(savedBg.mime === 'image/png' && savedBg.bytes > 0, 'background meta')
+const bgInfo = await api('/comm/api/background')
+assert(bgInfo.image === savedBg.image, 'background info after upload')
+const assetUrl = base + bgInfo.image + '&token=' + TOKEN
+const asset = await fetch(assetUrl)
+assert(asset.status === 200, 'background asset 200, got ' + asset.status)
+assert(asset.headers.get('content-type') === 'image/png', 'background asset content-type')
+const assetBytes = Buffer.from(await asset.arrayBuffer())
+assert(assetBytes.equals(Buffer.from(PNG_1PX, 'base64')), 'background bytes round-trip')
+const noToken = await fetch(base + bgInfo.image)
+assert(noToken.status === 401, 'background asset requires token, got ' + noToken.status)
+await api('/comm/api/background', 'POST', { clear: true })
+assert((await api('/comm/api/background')).image === null, 'background cleared')
+assert((await fetch(assetUrl)).status === 404, 'background asset 404 after clear')
+console.log('background image upload / serve / clear: OK')
+
 client.destroy()
 await api('/comm/api/close', 'POST', { link: linkId })
 server.closeAllConnections?.()

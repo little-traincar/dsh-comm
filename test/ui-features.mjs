@@ -231,6 +231,14 @@ const assert = (cond, message) => { if (!cond) throw new Error('assert failed: '
 await wait(() => $('headText') && $('headText').textContent.length > 0, 8000, 'page boot')
 console.log('boot OK:', $('headText').textContent)
 
+/* 背景图控件：按钮 + 菜单 + 隐藏 file input 存在，菜单可开关 */
+assert($('bgBtn') && $('bgMenu') && $('bgFile'), 'background controls present')
+click($('bgBtn'))
+assert($('bgMenu').classList.contains('show'), 'background menu opens')
+click($('bgBtn'))
+assert(!$('bgMenu').classList.contains('show'), 'background menu closes')
+console.log('background UI controls: OK')
+
 /* A. 串口参数 + 帧格式 */
 for (const id of ['serialDataBits', 'serialParity', 'serialStopBits', 'serialFlow', 'serialDtr', 'serialRts', 'serialAutoReconnect', 'serialFrame']) {
   assert($(id), 'missing #' + id)
@@ -270,8 +278,25 @@ const savedSettings = JSON.parse(dom.window.localStorage.getItem('dsh-comm.setti
 assert(savedSettings.cfg.serial.dataBits === '7' && savedSettings.cfg.serial.parity === 'even', 'serial params persisted')
 assert(savedSettings.cfg.serial.dtr === true && savedSettings.cfg.serial.autoReconnect === true, 'serial flags persisted')
 
+/* A3. 串口高级参数只在串口模式显示：展开后切到其他模式自动收起，切回串口恢复 */assert($('serialAdvanced').hidden === true, 'serial advanced hidden by default')
+click($('serialAdvBtn'))
+assert($('serialAdvanced').hidden === false, 'serial advanced opens')
+click(doc.querySelector('.rail-btn[data-mode="tcpServer"]'))
+await sleep(60)
+assert($('serialAdvanced').hidden === true, 'serial advanced hidden after switching to tcpServer')
+assert($('cfgTcpServer').classList.contains('active'), 'tcpServer cfg active after switch')
+assert($('headTitle').textContent === 'TCP 服务端', 'headTitle follows tcpServer mode, got ' + $('headTitle').textContent)
+await sleep(60)
+click(doc.querySelector('.rail-btn[data-mode="serial"]'))
+await sleep(60)
+assert($('serialAdvanced').hidden === false, 'serial advanced restored when back to serial')
+assert($('headTitle').textContent === '串口', 'headTitle follows serial mode, got ' + $('headTitle').textContent)
+click($('serialAdvBtn'))
+assert($('serialAdvanced').hidden === true, 'serial advanced closes with gear again')
+console.log('A3 serial advanced visibility: only in serial mode')
+
 /* B. 非串口链路 → #serialSignals hidden */
-click(doc.querySelector('#modeTabs button[data-mode="tcpServer"]'))
+click(doc.querySelector('.rail-btn[data-mode="tcpServer"]'))
 await wait(() => $('serialSignals').hidden === true, 4000, 'serialSignals hidden when active link is not serial')
 assert($('cfgTcpServer').classList.contains('active'), 'tcpServer cfg active')
 click($('tsBtn'))
@@ -450,3 +475,4 @@ if (errors.length) {
 console.log('\nUI FEATURES TEST PASSED')
 dom.window.close()
 server.close()
+

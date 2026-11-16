@@ -15,14 +15,39 @@
   }
   *{box-sizing:border-box}
   html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--text);font:12.5px/1.5 var(--sans);overflow:hidden}
+  body{margin:0;background:var(--bg);color:var(--text);font:13px/1.5 var(--sans);overflow:hidden}
   button,input,select{font:inherit;color:inherit}
   button{cursor:pointer}
-  .app{height:100%;display:flex;flex-direction:column;min-height:0;background:var(--panel)}
-  .head{flex:none;height:42px;display:flex;align-items:center;gap:9px;padding:0 12px;border-bottom:1px solid var(--line-soft)}
+  .app{height:100%;display:flex;flex-direction:row;min-height:0;background:var(--panel);position:relative;isolation:isolate}
+  .rail{flex:none;width:56px;background:#0E1219;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding:10px 0 8px;gap:4px;overflow:hidden}
+  .rail-logo{width:32px;height:32px;flex:none;border-radius:9px;background:linear-gradient(135deg,#4D6BFE,#38BDF8);display:grid;place-items:center;margin-bottom:10px;box-shadow:0 0 18px #4d6bfe55}
+  .rail-logo svg{width:18px;height:18px}
+  .rail-btn{width:50px;flex:none;border:0;background:transparent;color:var(--muted);border-radius:9px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:7px 0 6px;font-size:9.5px;line-height:1;cursor:pointer;white-space:nowrap}
+  .rail-btn svg{width:17px;height:17px}
+  .rail-btn:hover{background:#1A2130;color:var(--text)}
+  .rail-btn.active{background:#1B2340;color:#AEBDFF}
+  .rail-spacer{flex:1}
+  .main{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--panel)}
+  /* 用户自定义背景：图片半透明铺满整个面板，内容区用半透明底色保证可读 */
+  .app.has-bg{background:transparent}
+  .app.has-bg::before{content:"";position:absolute;inset:0;z-index:0;background-image:var(--bg-image);background-size:var(--bg-size,contain);background-repeat:no-repeat;background-position:center;opacity:var(--bg-alpha,.45);pointer-events:none}
+  .app.has-bg::after{content:"";position:absolute;inset:0;z-index:0;background:linear-gradient(180deg,rgba(6,9,14,.42),rgba(6,9,14,.62));opacity:var(--bg-scrim,.4);pointer-events:none}
+  .app.has-bg .rail,
+  .app.has-bg .main{position:relative;z-index:1;background:transparent}
+  .app.has-bg .head,
+  .app.has-bg .cfg,
+  .app.has-bg .cfg-sub,
+  .app.has-bg .tools,
+  .app.has-bg .send,
+  .app.has-bg .status{background:rgba(18,23,34,.72)}
+  .app.has-bg .auto-panel{background:rgba(14,21,34,.82)}
+  .app.has-bg .log-wrap{background:rgba(12,17,26,.55)}
+  .app.has-bg .log{background:transparent}
+  .app.has-bg .rail{background:rgba(14,18,25,.72)}
+  .head{flex:none;height:46px;display:flex;align-items:center;gap:9px;padding:0 12px 0 14px;border-bottom:1px solid var(--line-soft)}
   .head .plug{width:24px;height:24px;border-radius:7px;background:#182338;display:grid;place-items:center;color:var(--cyan)}
   .head .plug svg{width:13px;height:13px}
-  .head .title{font-weight:600;font-size:13px}
+  .head .title{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
   .head .state{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
   .led{width:7px;height:7px;border-radius:50%;background:var(--dim)}
   .led.on{background:var(--green);box-shadow:0 0 8px #22c55e88;animation:pulse 1.8s ease-in-out infinite}
@@ -34,19 +59,26 @@
   .theme-btn .ico-moon{display:none}
   html[data-theme="light"] .theme-btn .ico-sun{display:none}
   html[data-theme="light"] .theme-btn .ico-moon{display:block}
-  .tabs{flex:none;display:flex;gap:2px;padding:0 8px;border-bottom:1px solid var(--line-soft)}
-  .tabs button{flex:1;height:33px;border:0;background:transparent;color:var(--muted);font-size:11.5px;border-bottom:2px solid transparent;white-space:nowrap}
-  .tabs button.active{color:#C9D6FF;border-bottom-color:var(--blue)}
   .cfg{display:none;flex:none;flex-wrap:wrap;gap:7px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--line-soft)}
   .cfg.active{display:flex}
   .cfg .hint{color:var(--dim);font-size:10.5px;width:100%;margin-top:-2px}
+  .cfg-sub{flex:none;display:flex;flex-wrap:wrap;gap:7px;align-items:center;padding:0 12px 9px;color:var(--dim);font-size:10.5px}
+  .cfg-sub[hidden]{display:none}
+  .cfg-sub .hint{color:var(--dim);font-size:10.5px;width:100%}
+  .cfg-sub .select{height:26px;font-size:11px}
+  .select.target{width:180px;min-width:140px}
+  .clients{font-size:10.5px;color:var(--cyan);background:#12202E;border:1px solid #1E3A4A;border-radius:5px;padding:1px 6px;white-space:nowrap}
+  .adv-toggle{width:28px;height:28px;flex:none;border:1px solid var(--line);border-radius:7px;background:#0F1420;color:var(--muted);display:grid;place-items:center;font-size:13px;line-height:1;padding:0}
+  .adv-toggle:hover{background:#1C2433;color:var(--text)}
+  .adv-toggle.open{border-color:#35508F;background:#16203A;color:#9FB4FF}
+  .enc-label{color:var(--dim);font-size:10.5px;white-space:nowrap}
   .select{position:relative;display:flex;align-items:center;height:28px;background:#0F1420;border:1px solid var(--line);border-radius:7px;padding:0 24px 0 8px;color:#CBD5E6;font-size:11.5px;white-space:nowrap}
   .select::after{content:"▾";position:absolute;right:8px;top:50%;transform:translateY(-50%);color:var(--dim);font-size:10px;pointer-events:none}
   .select select{position:absolute;inset:0;opacity:0;cursor:pointer}
   .select.port{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
   .select.baud{width:82px}
   .select.ip{width:96px}
-  .select.enc{width:112px}
+  .select.enc{width:96px}
   .select.eol{height:28px;font-size:11px}
   .select:focus-within{border-color:#3A4A6B}
   .frame{color:var(--dim);font-family:var(--mono);font-size:11px}
@@ -58,8 +90,9 @@
   .colon{color:var(--dim);font-family:var(--mono);font-size:11px}
   .connect-btn{margin-left:auto;height:28px;padding:0 10px;border-radius:7px;border:1px solid #35508F;background:#16203A;color:#9FB4FF;font-size:11.5px}
   .connect-btn:hover{background:#1B2848}
-  .connect-btn.close{border-color:#5A3036;background:#251318;color:#FFB4B4}
-  .tools{flex:none;display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+  .connect-btn.close{border-color:#2B5D3F;background:#12251A;color:#7EE2A8}
+  .connect-btn.close:hover{background:#173021}
+  .tools{flex:none;display:flex;align-items:center;gap:5px;padding:8px 12px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
   .seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;height:26px}
   .seg button{border:0;background:#0F1420;color:var(--muted);padding:0 9px;font-size:11.5px}
   .seg button.active{background:#1E2B4D;color:#C9D6FF}
@@ -69,7 +102,7 @@
   .toggle i::after{content:"";position:absolute;width:10px;height:10px;border-radius:50%;background:#8B94A7;top:2px;left:2px;transition:.15s}
   .toggle input:checked+i{background:#2B3C75}
   .toggle input:checked+i::after{left:12px;background:#8FA6FF}
-  .filter{flex:1;min-width:80px;height:26px;background:#0F1420;border:1px solid var(--line);border-radius:7px;padding:0 8px;font-size:11.5px;color:#CBD5E6;outline:none}
+  .filter{flex:1;min-width:60px;height:26px;background:#0F1420;border:1px solid var(--line);border-radius:7px;padding:0 8px;font-size:11.5px;color:#CBD5E6;outline:none}
   .filter::placeholder{color:var(--dim)}
   .filter:focus{border-color:#3A4A6B}
   .ghost-btn{border:1px solid var(--line);background:#151B27;color:var(--muted);border-radius:7px;height:26px;padding:0 9px;font-size:11.5px}
@@ -147,7 +180,9 @@
   .send-primary:hover{background:#5C78FF}
   .send-primary:disabled{opacity:.45;cursor:not-allowed}
   .ms-label{color:var(--dim);font-size:10px}
-  .status{flex:none;min-height:28px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:2px 12px;color:var(--dim);font-size:10.5px;font-family:var(--mono);white-space:normal;overflow-x:hidden}
+  .status{flex:none;height:30px;display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--dim);font-size:10.5px;font-family:var(--mono);white-space:nowrap;overflow-x:auto;overflow-y:hidden}
+  .status::-webkit-scrollbar{height:4px}
+  .status::-webkit-scrollbar-thumb{background:#222b3c;border-radius:4px}
   .status b{color:#AEB9CC;font-weight:500}
   .status .sep{color:#2A3346}
   .status .right{margin-left:auto;display:flex;gap:8px;align-items:center}
@@ -162,6 +197,15 @@
   .log-menu button{border:0;background:transparent;color:#C6D0E2;text-align:left;font-size:11.5px;padding:7px 9px;border-radius:6px;white-space:nowrap}
   .log-menu button:hover{background:#1E2A44;color:#fff}
   .log-menu .sep{height:1px;background:var(--line-soft);margin:3px 4px}
+  .bg-menu{position:absolute;top:38px;right:108px;z-index:60;display:none;flex-direction:column;gap:8px;min-width:236px;background:#141A26;border:1px solid var(--line);border-radius:9px;box-shadow:0 10px 28px #00000077;padding:10px}
+  .bg-menu.show{display:flex}
+  .bg-menu .bg-title{font-size:11.5px;font-weight:600;color:#C6D0E2}
+  .bg-menu .bg-row{display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--muted)}
+  .bg-menu .bg-row input[type=range]{flex:1;min-width:0;accent-color:var(--blue)}
+  .bg-menu .bg-alpha{width:34px;text-align:right;font-family:var(--mono);font-size:10.5px;color:#C6D0E2}
+  .bg-menu .bg-select{flex:1;height:26px;background:#0F1420;border:1px solid var(--line);border-radius:7px;color:#CBD5E6;font-size:11px;padding:0 6px;outline:none;font-family:var(--sans)}
+  .bg-menu .bg-hint{font-size:10px;color:var(--dim);line-height:1.5}
+  .bg-menu .ghost-btn{width:100%;justify-content:center;text-align:center}
   .modal-backdrop{position:absolute;inset:0;z-index:80;display:none;align-items:center;justify-content:center;padding:12px;background:#00000088;backdrop-filter:blur(2px)}
   .modal-backdrop.show{display:flex}
   .modal{width:100%;max-width:430px;max-height:calc(100% - 20px);display:flex;flex-direction:column;overflow:hidden;background:#141A26;border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 50px #000000aa}
@@ -177,6 +221,17 @@
   .qrow .qdel:hover{background:#3A1F26;color:#FF9B9B}
   .toast{position:absolute;left:50%;bottom:40px;transform:translateX(-50%);background:#1B2440;border:1px solid #2F3E63;color:#C9D6FF;font-size:11px;padding:6px 10px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:70;white-space:nowrap}
   .toast.show{opacity:1}
+  /* 宽窗口（独立网页/大屏）下配置按内容收缩，不再让串口选择框拉满整行 */
+  @media (min-width:720px){
+    .select.port{flex:0 1 auto;min-width:170px;max-width:480px}
+    .connect-btn{margin-left:0}
+    .filter{flex:0 1 auto;min-width:200px;max-width:380px}
+    .cfg{gap:8px}
+  }
+  @media (max-width:520px){
+    .head .plug{display:none}
+    .bg-menu{right:12px}
+  }
   .boot-error{position:absolute;inset:0;z-index:90;display:none;align-items:center;justify-content:center;padding:20px;background:var(--bg);color:var(--muted);font-size:12px;text-align:center;line-height:1.8}
   .boot-error.show{display:flex}
   html[data-theme="dark"]{color-scheme:dark}
@@ -189,8 +244,20 @@
     --green:#12A150; --yellow:#C77700; --red:#D92D20;
   }
   html[data-theme="light"] .head .plug{background:#E8EDFF;color:#3B5BDB}
+  html[data-theme="light"] .rail{background:#F0F3F8;border-right-color:var(--line)}
+  html[data-theme="light"] .rail-btn:hover{background:#E3E9F2;color:var(--text)}
+  html[data-theme="light"] .rail-btn.active{background:#E4EAFF;color:#2F4BEA}
+  html[data-theme="light"] .app.has-bg::after{background:linear-gradient(180deg,rgba(241,245,249,.55),rgba(241,245,249,.74))}
+  html[data-theme="light"] .app.has-bg .rail{background:rgba(240,243,248,.80)}
+  html[data-theme="light"] .app.has-bg .head,
+  html[data-theme="light"] .app.has-bg .cfg,
+  html[data-theme="light"] .app.has-bg .cfg-sub,
+  html[data-theme="light"] .app.has-bg .tools,
+  html[data-theme="light"] .app.has-bg .send,
+  html[data-theme="light"] .app.has-bg .status{background:rgba(255,255,255,.74)}
+  html[data-theme="light"] .app.has-bg .auto-panel{background:rgba(247,249,252,.86)}
+  html[data-theme="light"] .app.has-bg .log-wrap{background:rgba(255,255,255,.62)}
   html[data-theme="light"] .icon-btn:hover{background:#EDF1F7;color:var(--text)}
-  html[data-theme="light"] .tabs button.active{color:#3B5BDB}
   html[data-theme="light"] .select,
   html[data-theme="light"] .mini-input,
   html[data-theme="light"] .qrow .qmode,
@@ -254,6 +321,10 @@
   html[data-theme="light"] .log-menu{background:#FFFFFF;box-shadow:0 10px 28px rgba(15,23,42,.18)}
   html[data-theme="light"] .log-menu button{color:#25324A}
   html[data-theme="light"] .log-menu button:hover{background:#F2F4F8;color:var(--text)}
+  html[data-theme="light"] .bg-menu{background:#FFFFFF;box-shadow:0 10px 28px rgba(15,23,42,.18)}
+  html[data-theme="light"] .bg-menu .bg-title{color:#25324A}
+  html[data-theme="light"] .bg-menu .bg-alpha{color:#25324A}
+  html[data-theme="light"] .bg-menu .bg-select{background:#FFFFFF;color:var(--text);border-color:var(--line)}
   html[data-theme="light"] .modal-backdrop{background:rgba(16,24,40,.35)}
   html[data-theme="light"] .modal{background:#FFFFFF;box-shadow:0 20px 50px rgba(15,23,42,.25)}
   html[data-theme="light"] .toast{background:#FFFFFF;border-color:#DDE3EC;color:#25324A;box-shadow:0 6px 18px rgba(15,23,42,.15)}
@@ -261,14 +332,51 @@
   html[data-theme="light"] .tstep .tdel{color:#8E99AA}
   html[data-theme="light"] .qrow .qdel:hover,
   html[data-theme="light"] .tstep .tdel:hover{background:#FFF2F2;color:#D92D20}
+  html[data-theme="light"] .clients{color:#0E7490;background:#E6F6FB;border-color:#BFE7F2}
+  html[data-theme="light"] .adv-toggle{background:#F2F4F8;color:#5F6B7D}
+  html[data-theme="light"] .adv-toggle:hover{background:#E9EEF5;color:var(--text)}
+  html[data-theme="light"] .adv-toggle.open{border-color:#BAC8FF;background:#EEF3FF;color:#2F4BEA}
+  html[data-theme="light"] .status::-webkit-scrollbar-thumb{background:#D3D9E2}
+  html[data-theme="light"] .connect-btn.close{border-color:#B7E4C7;background:#EAF8EF;color:#0F7B4A}
+  html[data-theme="light"] .connect-btn.close:hover{background:#DFF3E7}
 </style>
 </head>
 <body>
 <div class="app">
+  <aside class="rail">
+    <div class="rail-logo" title="DSH 通信调试台">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v3a6 6 0 0 1-12 0V8z"/><path d="M12 17v5"/></svg>
+    </div>
+    <button class="rail-btn active" data-mode="serial" title="串口">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v3a6 6 0 0 1-12 0V8z"/><path d="M12 17v5"/></svg>
+      <span>串口</span>
+    </button>
+    <button class="rail-btn" data-mode="tcpServer" title="TCP 服务端">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>
+      <span>TCP 服务端</span>
+    </button>
+    <button class="rail-btn" data-mode="tcpClient" title="TCP 客户端">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6"/><path d="M10 6l1-1a4.2 4.2 0 0 1 6 6l-1 1"/><path d="M14 18l-1 1a4.2 4.2 0 0 1-6-6l1-1"/></svg>
+      <span>TCP 客户端</span>
+    </button>
+    <button class="rail-btn" data-mode="udp" title="UDP">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 0 1 9 9"/><path d="M12 7a5 5 0 0 1 5 5"/><circle cx="12" cy="17" r="2"/><path d="M3 21l7-7"/></svg>
+      <span>UDP</span>
+    </button>
+    <div class="rail-spacer"></div>
+  </aside>
+
+  <div class="main">
   <header class="head">
     <span class="plug"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6"/><path d="M6 8h12v3a6 6 0 0 1-12 0V8z"/><path d="M12 17v5"/></svg></span>
-    <span class="title">通信调试台</span>
+    <span class="title" id="headTitle">串口</span>
     <span class="state" id="headState"><span class="led" id="headLed"></span><span id="headText">未连接</span></span>
+    <button class="icon-btn" id="bgBtn" title="背景图片：导入 / 不透明度 / 移除">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5L5 20"/></svg>
+    </button>
+    <button class="icon-btn" id="autoBtn" title="自动回复：按规则（或交给 DSH 会话）自动回复收到的数据">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.9-.9L3 21l1.9-4.6a8.2 8.2 0 0 1-1-3.9A8.4 8.4 0 0 1 12.4 4 8.4 8.4 0 0 1 21 11.5z"/><path d="M8.5 12.5l2.4 2.4 4.6-5"/></svg>
+    </button>
     <button class="icon-btn theme-btn" id="themeBtn" title="主题：深色（点击切换为浅色）">
       <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
       <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A8.1 8.1 0 1 1 11.2 3a6.4 6.4 0 0 0 9.8 9.8z"/></svg>
@@ -277,13 +385,6 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="M7 9l5 5 5-5"/><path d="M5 21h14"/></svg>
     </button>
   </header>
-
-  <div class="tabs" id="modeTabs">
-    <button class="active" data-mode="serial">串口</button>
-    <button data-mode="tcpServer">TCP 服务端</button>
-    <button data-mode="tcpClient">TCP 客户端</button>
-    <button data-mode="udp">UDP</button>
-  </div>
 
   <div class="cfg active" id="cfgSerial">
     <label class="select port" title="串口">
@@ -296,6 +397,12 @@
         <option>9600</option><option>57600</option><option>115200</option><option>460800</option><option>921600</option><option>2000000</option>
       </select>
     </label>
+    <span class="frame" id="serialFrame" title="当前串口帧格式">8N1</span>
+    <button class="adv-toggle" id="serialAdvBtn" title="更多串口参数：数据位 / 校验 / 停止位 / 流控 / DTR / RTS / 断线重连">⚙</button>
+    <button class="connect-btn" id="serialBtn">打开</button>
+  </div>
+
+  <div class="cfg-sub" id="serialAdvanced" hidden>
     <label class="select serial" title="数据位">
       <span id="dataBitsLabel">8</span>
       <select id="serialDataBits"><option value="8">8</option><option value="7">7</option><option value="6">6</option><option value="5">5</option></select>
@@ -315,8 +422,6 @@
     <label class="toggle" title="DTR"><input type="checkbox" id="serialDtr" checked><i></i>DTR</label>
     <label class="toggle" title="RTS"><input type="checkbox" id="serialRts" checked><i></i>RTS</label>
     <label class="toggle" title="断线自动重连"><input type="checkbox" id="serialAutoReconnect" checked><i></i>断线重连</label>
-    <span class="frame" id="serialFrame" title="当前串口帧格式">8N1</span>
-    <button class="connect-btn" id="serialBtn">打开</button>
     <div class="hint" id="serialHint"></div>
   </div>
 
@@ -326,6 +431,15 @@
     <span class="colon">:</span>
     <input class="mini-input port" id="tsPort" value="8080">
     <button class="connect-btn" id="tsBtn">监听</button>
+    <span class="clients" id="tsClients">客户端 0</span>
+  </div>
+
+  <div class="cfg-sub" id="cfgTsTarget" hidden>
+    发送目标
+    <label class="select target" title="TCP 服务端发送目标：全部客户端广播，或只发给选中的客户端">
+      <span id="tsTargetLabel">全部客户端</span>
+      <select id="tsTarget"></select>
+    </label>
   </div>
 
   <div class="cfg" id="cfgTcpClient">
@@ -353,6 +467,7 @@
       <button class="active" data-mode="text">文本</button>
       <button data-mode="hex">HEX</button>
     </div>
+    <span class="enc-label">编码</span>
     <label class="select enc" title="显示与文本发送编码">
       <span id="encLabel">GBK</span>
       <select id="encSel"></select>
@@ -360,8 +475,6 @@
     <label class="toggle"><input type="checkbox" id="tTs" checked><i></i>时间戳</label>
     <label class="toggle"><input type="checkbox" id="tAuto" checked><i></i>自动滚动</label>
     <label class="toggle" title="暂停后不再接收新数据：暂停期间到达的数据不会记录（发送不受影响），恢复后继续"><input type="checkbox" id="tPause"><i></i>暂停</label>
-    <button class="ghost-btn" id="autoBtn" title="按规则自动回复收到的数据">自动回复</button>
-    <button class="ghost-btn" id="clearBtn" title="清空当前链路的日志（Host 侧一并清除，重进面板不会回来）">清空日志</button>
     <input class="filter" id="filterInput" placeholder="过滤…">
   </div>
 
@@ -430,9 +543,11 @@
     <span class="sep">·</span>
     <span>编码 <b id="encStat">GBK</b></span>
     <span class="sep">·</span>
+    <span>解码错误 <b id="badCount">0</b></span>
+    <span class="sep">·</span>
     <span id="peerStat">对端 0</span>
     <span class="sep">·</span>
-    <span>缓冲 <b id="bufPct">0%</b></span>
+    <span id="bufPct">缓冲 0 B · 丢弃 0</span>
     <span class="pause-stat" id="pauseStat" hidden></span>
     <span class="rec" id="recStat">● 录制中</span>
     <span class="right">
@@ -447,8 +562,30 @@
     <button data-act="csv">导出 CSV (.csv)</button>
     <button data-act="bin">导出接收原始字节 (.bin)</button>
     <div class="sep"></div>
+    <button data-act="clearLog" id="clearBtn" title="清空当前链路的日志（Host 侧一并清除）">清空当前日志</button>
     <button data-act="clearRecord">清空录制缓冲</button>
   </div>
+
+  <div class="bg-menu" id="bgMenu">
+    <div class="bg-title">背景图片</div>
+    <button class="ghost-btn" id="bgPick">选择图片…</button>
+    <div class="bg-row">
+      <span>填充</span>
+      <select class="bg-select" id="bgFill">
+        <option value="cover">铺满窗口</option>
+        <option value="contain">适应窗口</option>
+        <option value="stretch">拉伸铺满</option>
+      </select>
+    </div>
+    <div class="bg-row">
+      <span>不透明度</span>
+      <input type="range" id="bgAlpha" min="10" max="100" step="5" value="45">
+      <span class="bg-alpha" id="bgAlphaLabel">45%</span>
+    </div>
+    <button class="ghost-btn" id="bgClear">移除背景</button>
+    <div class="bg-hint">不透明度 100% = 背景完全不透明（不叠暗色蒙层）；图片保存在 DSH 本机，仅面板 token 可读。</div>
+  </div>
+  <input type="file" id="bgFile" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
 
   <div class="modal-backdrop" id="quickBackdrop">
     <div class="modal">
@@ -524,6 +661,7 @@
 
   <div class="toast" id="toast"></div>
   <div class="boot-error" id="bootError"></div>
+  </div>
 </div>
 
 <script>
@@ -558,6 +696,7 @@
   let currentTimer = null
   let quickDraft = []
   let serialPorts = []
+  let serialAdvOpen = false
 
   const $ = (id) => document.getElementById(id)
   const logEl = $('log')
@@ -747,7 +886,9 @@
     return hexOf(item.bytes)
   }
   function makeLine(item) {
-    const decoded = decodeBytes(item.bytes, state.enc)
+    // sys 行是 Host 用 UTF-8 写的系统提示（串口打开/断开、客户端接入等），不能按数据编码解；
+    // RX/TX 才跟随用户选的编码。
+    const decoded = decodeBytes(item.bytes, item.dir === 'sys' ? 'utf-8' : state.enc)
     const useHex = state.hex || item.x
     const text = useHex ? hexLine(item) : decoded.text
     const full = useHex ? hexOf(item.bytes) : decoded.text
@@ -756,6 +897,7 @@
     const div = document.createElement('div')
     div.className = 'line ' + (item.dir === 'sys' ? 'dim' : 'info') + (decoded.bad && !useHex ? ' bad' : '')
     div.dataset.q = String(item.q)
+    if (decoded.bad && !useHex) div.dataset.bad = '1'
     const ts = document.createElement('span')
     ts.className = 'ts'
     ts.textContent = fmtTime(item.t)
@@ -890,11 +1032,42 @@
     updateJump()
   })
 
+  /* ── TCP 服务端发送目标 ── */
+  function renderTargetSelect(peers) {
+    const sel = $('tsTarget')
+    if (!sel) return
+    const current = sel.value
+    sel.innerHTML = ''
+    const all = document.createElement('option')
+    all.value = ''
+    all.textContent = '全部客户端'
+    sel.appendChild(all)
+    for (const peer of peers) {
+      const opt = document.createElement('option')
+      opt.value = peer
+      opt.textContent = peer
+      sel.appendChild(opt)
+    }
+    sel.value = current && peers.includes(current) ? current : ''
+    $('tsTargetLabel').textContent = sel.value || '全部客户端'
+  }
+  function targetPeer() {
+    if (state.mode !== 'tcpServer') return ''
+    const sel = $('tsTarget')
+    return sel ? sel.value : ''
+  }
+
   function updateCounters() {
     const link = activeLink()
     $('rxBytes').textContent = fmtBytes(link ? link.rx : 0)
     $('txBytes').textContent = fmtBytes(link ? link.tx : 0)
     $('peerStat').textContent = '对端 ' + (link && link.peers ? link.peers.length : 0)
+    const peers = link && Array.isArray(link.peers) ? link.peers : []
+    $('tsClients').textContent = '客户端 ' + peers.length
+    const serverOpen = Boolean(link && link.type === 'tcpServer' && link.open)
+    $('cfgTsTarget').hidden = !serverOpen
+    if (serverOpen) renderTargetSelect(peers)
+    $('badCount').textContent = String(logEl.querySelectorAll('.line[data-bad="1"]').length)
     const backlogBytes = link && typeof link.backlogBytes === 'number' ? link.backlogBytes : 0
     const dropped = link && typeof link.dropped === 'number' ? link.dropped : 0
     $('bufPct').textContent = '缓冲 ' + fmtBytes(backlogBytes) + ' · 丢弃 ' + dropped
@@ -942,7 +1115,8 @@
     const link = activeLink()
     const on = Boolean(link && link.open)
     $('headLed').className = 'led' + (on ? ' on' : '')
-    $('headText').textContent = link ? (on ? MODE_LABEL[link.type] + ' 已打开' : MODE_LABEL[link.type] + ' 已关闭') : MODE_LABEL[state.mode] + ' 未打开'
+    // 标题已经显示了链路类型，状态只留连接状态，避免窄面板下表头挤爆
+    $('headText').textContent = link ? (on ? '已打开' : '已关闭') : '未打开'
     syncButtons()
     renderQuick()
     updateCounters()
@@ -1180,12 +1354,12 @@
     const linkId = activeLinkId()
     if (!linkId) { toast('请先打开链路'); return }
     if (item.mode === 'hex') {
-      api('/comm/api/write', 'POST', { link: linkId, hex: item.data })
+      api('/comm/api/write', 'POST', { link: linkId, hex: item.data, peer: targetPeer() })
         .then(() => toast('已发送：' + (item.name || item.data)))
         .catch((error) => toast('发送失败：' + error.message))
     } else {
       const text = item.data + eolText()
-      api('/comm/api/write', 'POST', { link: linkId, text, encoding: state.enc })
+      api('/comm/api/write', 'POST', { link: linkId, text, encoding: state.enc, peer: targetPeer() })
         .then(() => toast('已发送：' + (item.name || item.data)))
         .catch((error) => toast('发送失败：' + error.message))
     }
@@ -1286,9 +1460,9 @@
     input.classList.remove('invalid')
     try {
       if (state.sendHex) {
-        await api('/comm/api/write', 'POST', { link: linkId, hex: raw })
+        await api('/comm/api/write', 'POST', { link: linkId, hex: raw, peer: targetPeer() })
       } else {
-        await api('/comm/api/write', 'POST', { link: linkId, text: raw + eolText(), encoding: state.enc })
+        await api('/comm/api/write', 'POST', { link: linkId, text: raw + eolText(), encoding: state.enc, peer: targetPeer() })
       }
       if (!fromPeriodic) { input.value = ''; input.focus() }
     } catch (error) {
@@ -1545,7 +1719,8 @@
   }
   function exportSource() { return recorded.length ? recorded : (logs.get(activeLinkId()) || []) }
   function oneLine(item) {
-    const decoded = decodeBytes(item.bytes, state.enc)
+    const enc = item.dir === 'sys' ? 'utf-8' : state.enc
+    const decoded = decodeBytes(item.bytes, enc)
     const dir = item.dir === 'tx' ? 'TX' : (item.dir === 'sys' ? 'SYS' : 'RX')
     const peer = item.peer ? ' ' + (item.dir === 'tx' ? 'dst=' : 'src=') + item.peer : ''
     const text = item.x ? '[binary]' : decoded.text.replace(/[\r\n]+/g, '\\n')
@@ -1564,10 +1739,11 @@
     if (!list.length) { toast('没有可导出的日志'); return }
     const rows = ['time,direction,peer,encoding,text,hex']
     for (const item of list) {
-      const decoded = decodeBytes(item.bytes, state.enc)
+      const enc = item.dir === 'sys' ? 'utf-8' : state.enc
+      const decoded = decodeBytes(item.bytes, enc)
       rows.push([
         csvCell(fmtTime(item.t)), csvCell(item.dir), csvCell(item.peer),
-        csvCell(item.x ? 'binary' : state.enc), csvCell(item.x ? '' : decoded.text), csvCell(hexOf(item.bytes)),
+        csvCell(item.x ? 'binary' : enc), csvCell(item.x ? '' : decoded.text), csvCell(hexOf(item.bytes)),
       ].join(','))
     }
     download('comm-log-' + fileStamp() + '.csv', '\uFEFF' + rows.join('\r\n'), 'text/csv;charset=utf-8')
@@ -1614,18 +1790,22 @@
   /* ── 模式 / 配置 ── */
   function applyMode(mode) {
     state.mode = mode
-    for (const btn of $('modeTabs').children) btn.classList.toggle('active', btn.dataset.mode === mode)
+    $('headTitle').textContent = MODE_LABEL[mode] || mode
+    for (const btn of document.querySelectorAll('.rail-btn[data-mode]')) btn.classList.toggle('active', btn.dataset.mode === mode)
     const map = { serial: 'cfgSerial', tcpServer: 'cfgTcpServer', tcpClient: 'cfgTcpClient', udp: 'cfgUdp' }
     for (const id of ['cfgSerial', 'cfgTcpServer', 'cfgTcpClient', 'cfgUdp']) {
       $(id).classList.toggle('active', id === map[mode])
     }
+    // 串口高级参数属于串口模式：切到其他链路时一律收起，切回串口时恢复此前的展开状态
+    $('serialAdvanced').hidden = mode !== 'serial' || !serialAdvOpen
+    $('serialAdvBtn').classList.toggle('open', mode === 'serial' && serialAdvOpen)
     renderLog()
     updateHead()
     if (mode === 'serial') loadPorts()
     saveUiSettings()
   }
-  $('modeTabs').addEventListener('click', (event) => {
-    const btn = event.target.closest('button')
+  document.querySelector('.rail').addEventListener('click', (event) => {
+    const btn = event.target.closest('.rail-btn[data-mode]')
     if (btn) applyMode(btn.dataset.mode)
   })
 
@@ -1726,7 +1906,140 @@
     serialAction({ action: 'reconnect' }, '已请求重连')
   })
   $('eolSel').addEventListener('change', () => { $('eolLabel').textContent = $('eolSel').value })
+  $('serialAdvBtn').addEventListener('click', () => {
+    serialAdvOpen = !serialAdvOpen
+    const row = $('serialAdvanced')
+    row.hidden = state.mode !== 'serial' || !serialAdvOpen
+    $('serialAdvBtn').classList.toggle('open', !row.hidden)
+  })
+  $('tsTarget').addEventListener('change', () => {
+    $('tsTargetLabel').textContent = $('tsTarget').value || '全部客户端'
+  })
   $('saveBtn').textContent = '导出日志'
+
+  /* ── 面板背景图（图片存 Host，透明度存本地） ── */
+  const BG_ALPHA_KEY = 'dsh-comm.bgAlpha'
+  const BG_FILL_KEY = 'dsh-comm.bgFill'
+  const BG_FILLS = ['contain', 'cover', 'stretch']
+  let bgAlpha = 45
+  let bgFill = 'cover'
+  try {
+    const savedAlpha = localStorage.getItem(BG_ALPHA_KEY)
+    if (savedAlpha !== null) bgAlpha = Math.min(100, Math.max(10, Math.round(Number(savedAlpha) / 5) * 5 || 45))
+    const savedFill = localStorage.getItem(BG_FILL_KEY)
+    if (savedFill && BG_FILLS.includes(savedFill)) bgFill = savedFill
+  } catch { /* ignore */ }
+
+  function clampBgAlpha(value) {
+    const n = Number(value)
+    if (!Number.isFinite(n)) return 45
+    return Math.min(100, Math.max(10, Math.round(n / 5) * 5))
+  }
+  function bgUrlWithToken(image) {
+    if (!image) return ''
+    return image + (image.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN)
+  }
+  function applyBgAlpha(value, persist) {
+    bgAlpha = clampBgAlpha(value)
+    const app = document.querySelector('.app')
+    if (app) {
+      const alpha = bgAlpha / 100
+      app.style.setProperty('--bg-alpha', String(alpha))
+      // 不透明度越高，暗色蒙层越淡；100% 时完全去掉蒙层，图片就是完全不透明
+      app.style.setProperty('--bg-scrim', String(Math.max(0, (1 - alpha) * 0.8)))
+    }
+    if ($('bgAlpha')) $('bgAlpha').value = String(bgAlpha)
+    if ($('bgAlphaLabel')) $('bgAlphaLabel').textContent = bgAlpha + '%'
+    if (persist) { try { localStorage.setItem(BG_ALPHA_KEY, String(bgAlpha)) } catch { /* ignore */ } }
+  }
+  function applyBgFill(value, persist) {
+    bgFill = BG_FILLS.includes(value) ? value : 'cover'
+    const app = document.querySelector('.app')
+    if (app) {
+      app.style.setProperty('--bg-size', bgFill === 'cover' ? 'cover' : bgFill === 'stretch' ? '100% 100%' : 'contain')
+    }
+    if ($('bgFill')) $('bgFill').value = bgFill
+    if (persist) { try { localStorage.setItem(BG_FILL_KEY, bgFill) } catch { /* ignore */ } }
+  }
+  function applyBackground(image) {
+    const app = document.querySelector('.app')
+    if (!app) return
+    const url = bgUrlWithToken(image)
+    if (!url) {
+      app.classList.remove('has-bg')
+      app.style.removeProperty('--bg-image')
+      return
+    }
+    app.style.setProperty('--bg-image', 'url("' + url.replace(/"/g, '%22') + '")')
+    app.classList.add('has-bg')
+  }
+  async function loadBackground() {
+    try {
+      const data = await api('/comm/api/background')
+      if (data && data.image) applyBackground(data.image)
+    } catch { /* Host 未提供背景接口或没有背景 */ }
+  }
+  function readFileDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result || ''))
+      reader.onerror = () => reject(reader.error || new Error('读取图片失败'))
+      reader.readAsDataURL(file)
+    })
+  }
+  function loadImageElement(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error('无法识别该图片'))
+      img.src = url
+    })
+  }
+  async function prepareBackgroundFile(file) {
+    const raw = await readFileDataUrl(file)
+    const img = await loadImageElement(raw)
+    const maxSide = 2048
+    const tooBig = file.size > 1.2 * 1024 * 1024 || img.width > maxSide || img.height > maxSide
+    if (!tooBig) return raw
+    const scale = Math.min(1, maxSide / Math.max(img.width, img.height))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(img.width * scale))
+    canvas.height = Math.max(1, Math.round(img.height * scale))
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return raw
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+    return canvas.toDataURL('image/jpeg', 0.86)
+  }
+  const bgMenu = $('bgMenu')
+  $('bgBtn').addEventListener('click', (event) => {
+    event.stopPropagation()
+    bgMenu.classList.toggle('show')
+  })
+  document.addEventListener('click', (event) => { if (!bgMenu.contains(event.target)) bgMenu.classList.remove('show') })
+  $('bgPick').addEventListener('click', () => $('bgFile').click())
+  $('bgAlpha').addEventListener('input', () => { applyBgAlpha($('bgAlpha').value, false); saveUiSettings() })
+  $('bgAlpha').addEventListener('change', () => applyBgAlpha($('bgAlpha').value, true))
+  $('bgFill').addEventListener('change', () => { applyBgFill($('bgFill').value, true); saveUiSettings() })
+  $('bgClear').addEventListener('click', async () => {
+    try {
+      await api('/comm/api/background', 'POST', { clear: true })
+      applyBackground(null)
+      toast('背景已移除')
+    } catch (error) { toast('移除背景失败：' + ((error && error.message) || error)) }
+  })
+  $('bgFile').addEventListener('change', async () => {
+    const file = $('bgFile').files && $('bgFile').files[0]
+    $('bgFile').value = ''
+    if (!file) return
+    if (!/^image\/(png|jpeg|webp|gif)$/.test(file.type)) { toast('只支持 PNG / JPEG / WebP / GIF'); return }
+    if (file.size > 20 * 1024 * 1024) { toast('图片太大（最大 20 MB）'); return }
+    try {
+      const dataUrl = await prepareBackgroundFile(file)
+      const data = await api('/comm/api/background', 'POST', { dataUrl })
+      if (data && data.image) applyBackground(data.image)
+      toast('背景已更新')
+    } catch (error) { toast('设置背景失败：' + ((error && error.message) || error)) }
+  })
 
   /* ── 自动回复 ── */
   let autoRules = []
@@ -1928,6 +2241,8 @@
       auto: state.auto,
       paused: state.paused,
       filter: state.filter,
+      bgAlpha,
+      bgFill,
       eol: $('eolSel').value,
       periodMs: $('periodMs').value,
       periodic: $('periodic').checked,
@@ -1978,6 +2293,8 @@
     $('tAuto').checked = state.auto
     $('tPause').checked = state.paused
     $('filterInput').value = state.filter
+    if (saved.bgAlpha !== undefined) bgAlpha = clampBgAlpha(saved.bgAlpha)
+    if (typeof saved.bgFill === 'string' && BG_FILLS.includes(saved.bgFill)) bgFill = saved.bgFill
     if (typeof saved.eol === 'string') $('eolSel').value = saved.eol
     if (typeof saved.periodMs === 'string') $('periodMs').value = saved.periodMs
     if (saved.autoDebounce !== undefined) $('autoDebounce').value = String(saved.autoDebounce)
@@ -2037,6 +2354,9 @@
     $('encSel').appendChild(opt)
   }
   restoreUiSettings()
+  applyBgAlpha(bgAlpha)
+  applyBgFill(bgFill)
+  loadBackground()
   $('encSel').value = state.enc
   updateSerialFrame()
   applyMode(state.mode || 'serial')
@@ -2047,3 +2367,5 @@
 </script>
 </body>
 </html>
+
+

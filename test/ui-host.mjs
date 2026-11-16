@@ -1,4 +1,4 @@
-// End-to-end check: the real v2 Host half serving the real UI page in jsdom.
+﻿// End-to-end check: the real v2 Host half serving the real UI page in jsdom.
 // No DSH process needed. Covers serial form -> open options, DTR/RTS container,
 // host timers (quick + modal), auto-reply debounce, buffer stats, TCP data flow.
 // Run: node test/ui-host.mjs
@@ -84,7 +84,7 @@ const hostApi = async (path, method = 'GET', body) => {
 }
 
 try {
-  await waitFor(() => doc.querySelector('#headText') && doc.querySelector('#headText').textContent.includes('串口'), 10000, 'UI boot')
+  await waitFor(() => doc.querySelector('#headTitle') && doc.querySelector('#headTitle').textContent.includes('串口'), 10000, 'UI boot')
   console.log('UI boot: OK')
 
   /* serial parameter form + frame label */
@@ -104,7 +104,7 @@ try {
 
   /* open a TCP server through the UI, stream data, verify log + buffer text */
   const port = await freePort()
-  doc.querySelector('#modeTabs button[data-mode="tcpServer"]').click()
+  doc.querySelector('.rail-btn[data-mode="tcpServer"]').click()
   await waitFor(() => doc.querySelector('#cfgTcpServer').classList.contains('active'), 3000, 'tcpServer tab')
   doc.querySelector('#tsPort').value = String(port)
   doc.querySelector('#tsBtn').click()
@@ -221,3 +221,5 @@ try {
   server.closeAllConnections?.()
   await new Promise((resolve) => server.close(resolve))
 }
+
+
